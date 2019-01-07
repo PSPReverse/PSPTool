@@ -802,7 +802,7 @@ def main():
         '-d idx:     specifies directory_index (default: all _directories)',
         '-n:         hide duplicate entries from listings',
         '-i:         display additional entry header info',
-        '-a:         display entry architecture (powered by cpu_rec)'
+        '-a:         display entry architecture (powered by cpu_rec)',
         '-v:         display even more info (AGESA Version, Entropy, MD5)',
         '-t csvfile: only display entries found in the given SPI trace',
         '            (see psptrace for details)',

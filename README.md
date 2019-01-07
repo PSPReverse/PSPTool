@@ -9,30 +9,42 @@ It is based on reverse-engineering efforts of AMD's proprietary **simple filesys
 **psptool favourably works with BIOS ROM files** such as UEFI images – as they can be obtained labeled *BIOS updates* from OEMs and IBVs. However, it won't complain about additional headers such as an Aptio Capsule header.
 
 ```
-usage: psptool [-h] [-v] [-n] (-D | -E | -X | -R | -H) file
+usage: psptool [-h] [-E | -X | -R] file
 
-Find, display, extract and manipulate PSP firmware directories inside binary
-files like UEFI volumes.
+Parse, display, extract and manipulate PSP firmware inside BIOS ROMs, UEFI volumes and so on.
 
 positional arguments:
-  file                 binary file to be parsed for PSP firmware directories
+  file                 Binary file to be parsed for PSP firmware _directories
 
 optional arguments:
-  -h, --help           show this help message and exit
-  -v, --verbose        increase output verbosity
-  -n, --no-duplicates  hide duplicate entries from listings
-  -D, --directories    find, parse and display all PSP firmware directories in
-                       file
-  -E, --entries        find, parse and display all entries contained in all
-                       PSP firmware directories or only of the given directory
-                       index (-d)
-  -X, --extract-entry  extract a raw PSP firmware entry (-a for all entries or
-                       specify directory index -d, entry index -e); for
-                       decompressing provide -u; for conversion of an AMD
-                       Signing Key into PEM format provide -k
-  -R, --replace-entry  replace a raw PSP firmware entry of the given directory
-                       index (-d) and entry index (-e) by an equally large
-                       subfile (stdin or -s) and save it as outfile (stdout or
-                       -o)
+  -h, --help           Show this help message and exit.
+
+  -E, --entries        Default: Parse and display PSP firmware entries.
+                       [-d idx] [-n] [-i] [-v]
+
+                       -d idx:     specifies directory_index (default: all _directories)
+                       -n:         hide duplicate entries from listings
+                       -i:         display additional entry header info
+                       -a:         display entry architecture (powered by cpu_rec)
+                       -v:         display even more info (AGESA Version, Entropy, MD5)
+                       -t csvfile: only display entries found in the given SPI trace
+                                   (see psptrace for details)
+  -X, --extract-entry  Extract one or more PSP firmware entries.
+                       [-d idx [-e idx]] [-n] [-u] [-k] [-v] [-o outfile]
+
+                       -d idx:  specifies directory_index (default: all _directories)
+                       -e idx:  specifies entry_index (default: all entries)
+                       -n:      skip duplicate entries
+                       -u:      uncompress compressed entries
+                       -k:      convert _pubkeys into PEM format
+                       -v:      increase output verbosity
+                       -o file: specifies outfile/outdir (default: stdout/$PWD)
+  -R, --replace-entry  Replace a raw PSP firmware entry and export new ROM file.
+                       -d idx -e idx [-s subfile] [-o outfile]
+
+                       -d idx:  specifies directory_index
+                       -e idx:  specifies entry_index
+                       -s file: specifies subfile (default: stdin)
+                       -o file: specifies outfile (default: stdout)
 ```
 
