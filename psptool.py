@@ -469,6 +469,14 @@ class PSPTool:
             os.remove(data_fname)
             os.remove(pubkey_tmp + ".pem")
 
+    def get_entry_with_type(self, type_):
+        directory_entries = [directory['entries'] for directory in self._directories]
+        all_entries = [entry for sublist in directory_entries for entry in sublist]
+
+        for entry in all_entries:
+            if entry['type'] == type_:
+                return entry
+
     def extract_entry(self, directory_index, entry_index, outfile=None, no_duplicates=False, decompress=False,
                       to_pem_key=False):
         entry = self._directories[directory_index]['entries'][entry_index]
