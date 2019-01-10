@@ -470,6 +470,7 @@ class PSPTool:
             os.remove(pubkey_tmp + ".pem")
 
     def get_entry_with_type(self, type_):
+        # todo: extract all_entries into member or method
         directory_entries = [directory['entries'] for directory in self._directories]
         all_entries = [entry for sublist in directory_entries for entry in sublist]
 
@@ -603,6 +604,38 @@ class PSPTool:
                 f.write(new_file_content)
         else:
             sys.stdout.buffer.write(new_file_content)
+
+    def update_signatures(self, key_id, keypair, outfile=None):
+        directory_entries = [directory['entries'] for directory in self._directories]
+        all_entries = [entry for sublist in directory_entries for entry in sublist]
+
+        with open(keypair, 'rb') as f:
+            keypair_pem = f.read()
+
+        from cryptography.hazmat.backends import default_backend
+        from cryptography.hazmat.primitives.serialization import load_pem_public_key, load_pem_private_key
+        from cryptography.hazmat.primitives.asymmetric import padding
+        from cryptography.hazmat.primitives import hashes
+        from cryptography.exceptions import InvalidSignature
+
+        private_key = load_pem_private_key(keypair_pem, password=None, backend=default_backend())
+
+        for entry in all_entries:
+            if 'sig_fp' in entry:
+                # make b'1bb987c359 to 1BB987C3
+                entry_id = str(entry['sig_fp'][:8], encoding='ascii').upper()
+
+                if entry_id == key_id:
+                    signature = private_key.sign(
+                        bytes(entry['content']),
+                        padding.PSS(
+                            mgf=padding.MGF1(hashes.SHA256()),
+                            salt_length=32
+                        ),
+                        hashes.SHA256()
+                    )
+
+                    print(key_id)
 
     def print_directory_entries(self, directory_index, no_duplicates=False, display_entry_header=False,
                                 display_arch=False, csvfile=None):
@@ -799,6 +832,8 @@ def main():
     parser.add_argument('-i', '--entry-header', help=argparse.SUPPRESS, action='store_true')
     parser.add_argument('-a', '--detect-arch', help=argparse.SUPPRESS, action='store_true')
     parser.add_argument('-t', '--csvfile', help=argparse.SUPPRESS)
+    parser.add_argument('-q', '--key-id', help=argparse.SUPPRESS)
+    parser.add_argument('-p', '--keypair', help=argparse.SUPPRESS)
 
     # These are the main options
     action = parser.add_mutually_exclusive_group(required=False)
@@ -839,6 +874,15 @@ def main():
         '-o file: specifies outfile (default: stdout)',
         '']), action='store_true')
 
+    action.add_argument('-U', '--update-signatures', help='\n'.join([
+        'Update all signatures of a given key id and export new ROM file.',
+        '-q key_id -p keypair [-o outfile]',
+        '',
+        '-q key_id: specifies the key_id of the to be updated signatures',
+        '-p file:   specifies a path to the keypair in PEM format for re-signing',
+        '-o file:   specifies outfile (default: stdout)',
+    ]), action='store_true')
+
     args = parser.parse_args()
     pt = PSPTool(args.file, verbose=args.verbose)
 
@@ -864,6 +908,12 @@ def main():
     elif args.replace_entry:
         if args.directory_index is not None and args.entry_index is not None:
             pt.replace_entry(args.directory_index, args.entry_index, args.subfile, args.outfile)
+        else:
+            parser.print_help(sys.stderr)
+
+    elif args.update_signatures:
+        if args.key_id is not None and args.keypair is not None:
+            pt.update_signatures(args.key_id, args.keypair, outfile=args.outfile)
         else:
             parser.print_help(sys.stderr)
 
