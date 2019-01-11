@@ -119,6 +119,12 @@ DIRECTORY_ENTRY_FIELDS = ['type', 'size', 'address', 'rsv0', 'rsv1', 'rsv2']
 # from https://github.com/coreboot/coreboot/blob/master/...
 #  .../src/vendorcode/amd/pi/00670F00/Proc/Psp/PspBaseLib/PspDirectory.h
 #  .../util/amdfwtool/amdfwtool.c
+DIRECTORY_KEY_TYPES = {
+    0x00:   'AMD_PUBLIC_KEY',               # PSP entry pointer to AMD public key
+    0x05:   'BIOS_PUBLIC_KEY',              # PSP entry points to BIOS public key stored in SPI space
+    0x09:   'AMD_SEC_DBG_PUBLIC_KEY',       # PSP entry pointer to Secure Unlock Public key
+    0x0A:   'OEM_PSP_FW_PUBLIC_KEY',        # PSP entry pointer to an optional public part of the OEM PSP Firmware
+}
 
 DIRECTORY_ENTRY_TYPES = {  # enum _PSP_DIRECTORY_ENTRY_TYPE {
     0x00:   'AMD_PUBLIC_KEY',               # PSP entry pointer to AMD public key
@@ -605,37 +611,67 @@ class PSPTool:
         else:
             sys.stdout.buffer.write(new_file_content)
 
-    def update_signatures(self, key_id, keypair, outfile=None):
+    def update_signatures(self, key_id, private_key, outfile=None):
         directory_entries = [directory['entries'] for directory in self._directories]
-        all_entries = [entry for sublist in directory_entries for entry in sublist]
+        all_entries = [entry for sublist in directory_entries for entry in
+                       sublist if entry['type'] > 0x3]
 
-        with open(keypair, 'rb') as f:
-            keypair_pem = f.read()
+
+        with open(private_key, 'rb') as f:
+            private_key_pem = f.read()
 
         from cryptography.hazmat.backends import default_backend
-        from cryptography.hazmat.primitives.serialization import load_pem_public_key, load_pem_private_key
+        from cryptography.hazmat.primitives.serialization import load_pem_private_key
         from cryptography.hazmat.primitives.asymmetric import padding
         from cryptography.hazmat.primitives import hashes
-        from cryptography.exceptions import InvalidSignature
 
-        private_key = load_pem_private_key(keypair_pem, password=None, backend=default_backend())
+        private_key = load_pem_private_key(private_key_pem, password=None, backend=default_backend())
 
+        out = bytearray(self._file_content)
         for entry in all_entries:
-            if 'sig_fp' in entry:
+            if entry['type'] in DIRECTORY_KEY_TYPES.keys() or 'sig_fp' in entry:
                 # make b'1bb987c359 to 1BB987C3
-                entry_id = str(entry['sig_fp'][:8], encoding='ascii').upper()
+
+                if entry['type'] in DIRECTORY_KEY_TYPES.keys():
+                    # Public keys are signed differently
+                    entry_id = str(hexlify(entry['content'][0x14:0x18]),
+                                   encoding='ascii').upper()
+                    content = entry['content']
+                    size_signed = len(content) - 0x100
+                    content = content[:size_signed]
+                else:
+                    # "Normal" Apps
+                    entry_id = str(entry['sig_fp'][:8], encoding='ascii').upper()
+                    if entry['compressed']:
+                        content = zlib_decompress(entry['content'])
+                    else:
+                        content = entry['content']
+
+                    size_signed = entry['s_signed']
+                    # Account for HDR -> + 0x100
+                    content = content[:size_signed+0x100]
 
                 if entry_id == key_id:
-                    signature = private_key.sign(
-                        bytes(entry['content']),
-                        padding.PSS(
-                            mgf=padding.MGF1(hashes.SHA256()),
-                            salt_length=32
-                        ),
-                        hashes.SHA256()
-                    )
+                    try:
+                        signature = private_key.sign(
+                            content,
+                            padding.PSS(
+                                mgf=padding.MGF1(hashes.SHA256()),
+                                salt_length=32
+                            ),
+                            hashes.SHA256()
+                        )
+                    except:
+                        print("Signing exception")
 
-                    print(key_id)
+                    sig_start = entry['address'] + len(entry['content']) - len(signature)
+                    out[sig_start:sig_start+len(signature)] = signature
+
+        if outfile is not None:
+            with open(outfile, 'wb') as f:
+                f.write(out)
+        else:
+            sys.stdout.buffer.write(out)
 
     def print_directory_entries(self, directory_index, no_duplicates=False, display_entry_header=False,
                                 display_arch=False, csvfile=None):
@@ -833,7 +869,7 @@ def main():
     parser.add_argument('-a', '--detect-arch', help=argparse.SUPPRESS, action='store_true')
     parser.add_argument('-t', '--csvfile', help=argparse.SUPPRESS)
     parser.add_argument('-q', '--key-id', help=argparse.SUPPRESS)
-    parser.add_argument('-p', '--keypair', help=argparse.SUPPRESS)
+    parser.add_argument('-p', '--private_key', help=argparse.SUPPRESS)
 
     # These are the main options
     action = parser.add_mutually_exclusive_group(required=False)
@@ -876,10 +912,10 @@ def main():
 
     action.add_argument('-U', '--update-signatures', help='\n'.join([
         'Update all signatures of a given key id and export new ROM file.',
-        '-q key_id -p keypair [-o outfile]',
+        '-q key_id -p private_key [-o outfile]',
         '',
         '-q key_id: specifies the key_id of the to be updated signatures',
-        '-p file:   specifies a path to the keypair in PEM format for re-signing',
+        '-p file:   specifies a path to the private_key in PEM format for re-signing',
         '-o file:   specifies outfile (default: stdout)',
     ]), action='store_true')
 
@@ -912,8 +948,8 @@ def main():
             parser.print_help(sys.stderr)
 
     elif args.update_signatures:
-        if args.key_id is not None and args.keypair is not None:
-            pt.update_signatures(args.key_id, args.keypair, outfile=args.outfile)
+        if args.key_id is not None and args.private_key is not None:
+            pt.update_signatures(args.key_id, args.private_key, outfile=args.outfile)
         else:
             parser.print_help(sys.stderr)
 
