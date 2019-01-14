@@ -611,11 +611,10 @@ class PSPTool:
         else:
             sys.stdout.buffer.write(new_file_content)
 
-    def update_signatures(self, key_id, private_key, outfile=None):
+    def update_signatures(self, private_key, outfile=None):
         directory_entries = [directory['entries'] for directory in self._directories]
         all_entries = [entry for sublist in directory_entries for entry in
                        sublist if entry['type'] > 0x3]
-
 
         with open(private_key, 'rb') as f:
             private_key_pem = f.read()
@@ -634,14 +633,11 @@ class PSPTool:
 
                 if entry['type'] in DIRECTORY_KEY_TYPES.keys():
                     # Public keys are signed differently
-                    entry_id = str(hexlify(entry['content'][0x14:0x18]),
-                                   encoding='ascii').upper()
                     content = entry['content']
                     size_signed = len(content) - 0x100
                     content = content[:size_signed]
                 else:
                     # "Normal" Apps
-                    entry_id = str(entry['sig_fp'][:8], encoding='ascii').upper()
                     if entry['compressed']:
                         content = zlib_decompress(entry['content'])
                     else:
@@ -651,21 +647,20 @@ class PSPTool:
                     # Account for HDR -> + 0x100
                     content = content[:size_signed+0x100]
 
-                if entry_id == key_id:
-                    try:
-                        signature = private_key.sign(
-                            content,
-                            padding.PSS(
-                                mgf=padding.MGF1(hashes.SHA256()),
-                                salt_length=32
-                            ),
-                            hashes.SHA256()
-                        )
-                    except:
-                        print("Signing exception")
+                try:
+                    signature = private_key.sign(
+                      content,
+                      padding.PSS(
+                          mgf=padding.MGF1(hashes.SHA256()),
+                          salt_length=32
+                      ),
+                      hashes.SHA256()
+                    )
+                except:
+                    print("Signing exception")
 
-                    sig_start = entry['address'] + len(entry['content']) - len(signature)
-                    out[sig_start:sig_start+len(signature)] = signature
+                sig_start = entry['address'] + len(entry['content']) - len(signature)
+                out[sig_start:sig_start+len(signature)] = signature
 
         if outfile is not None:
             with open(outfile, 'wb') as f:
