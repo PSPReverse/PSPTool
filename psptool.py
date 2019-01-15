@@ -524,7 +524,7 @@ class PSPTool:
             with open(outfile, 'wb') as f:
                 f.write(entry_content)
         else:
-            sys.stdout.buffer.write(entry_content)
+            return entry_content
 
     def extract_directory(self, directory_index, outdir=None, no_duplicates=False, decompress=False, to_pem_key=False):
         """
@@ -609,7 +609,7 @@ class PSPTool:
             with open(outfile, 'wb') as f:
                 f.write(new_file_content)
         else:
-            sys.stdout.buffer.write(new_file_content)
+            return new_file_content
 
     def update_signatures(self, private_key, outfile=None):
         directory_entries = [directory['entries'] for directory in self._directories]
@@ -666,7 +666,7 @@ class PSPTool:
             with open(outfile, 'wb') as f:
                 f.write(out)
         else:
-            sys.stdout.buffer.write(out)
+            return out
 
     def print_directory_entries(self, directory_index, no_duplicates=False, display_entry_header=False,
                                 display_arch=False, csvfile=None):
@@ -863,7 +863,6 @@ def main():
     parser.add_argument('-i', '--entry-header', help=argparse.SUPPRESS, action='store_true')
     parser.add_argument('-a', '--detect-arch', help=argparse.SUPPRESS, action='store_true')
     parser.add_argument('-t', '--csvfile', help=argparse.SUPPRESS)
-    parser.add_argument('-q', '--key-id', help=argparse.SUPPRESS)
     parser.add_argument('-p', '--private_key', help=argparse.SUPPRESS)
 
     # These are the main options
@@ -906,10 +905,9 @@ def main():
         '']), action='store_true')
 
     action.add_argument('-U', '--update-signatures', help='\n'.join([
-        'Update all signatures of a given key id and export new ROM file.',
-        '-q key_id -p private_key [-o outfile]',
+        'Re-sign all signatures in the ROM file with a given private key and export a new ROM file.',
+        '-p private_key [-o outfile]',
         '',
-        '-q key_id: specifies the key_id of the to be updated signatures',
         '-p file:   specifies a path to the private_key in PEM format for re-signing',
         '-o file:   specifies outfile (default: stdout)',
     ]), action='store_true')
@@ -920,11 +918,13 @@ def main():
     if args.verbose:
         print(pt.agesa_version)
 
+    out = None
+
     # Now follows an ugly but necessary argument dependency checking
     if args.extract_entry:
         if args.directory_index is not None:
             if args.entry_index is not None:
-                pt.extract_entry(args.directory_index, args.entry_index, outfile=args.outfile,
+                out = pt.extract_entry(args.directory_index, args.entry_index, outfile=args.outfile,
                                  no_duplicates=args.no_duplicates, decompress=args.decompress, to_pem_key=args.pem_key)
             else:
                 pt.extract_directory(args.directory_index, outdir=args.outdir, no_duplicates=args.no_duplicates,
@@ -938,13 +938,13 @@ def main():
 
     elif args.replace_entry:
         if args.directory_index is not None and args.entry_index is not None:
-            pt.replace_entry(args.directory_index, args.entry_index, args.subfile, args.outfile)
+            out = pt.replace_entry(args.directory_index, args.entry_index, args.subfile, args.outfile)
         else:
             parser.print_help(sys.stderr)
 
     elif args.update_signatures:
-        if args.key_id is not None and args.private_key is not None:
-            pt.update_signatures(args.key_id, args.private_key, outfile=args.outfile)
+        if args.private_key is not None:
+            out = pt.update_signatures(args.private_key, outfile=args.outfile)
         else:
             parser.print_help(sys.stderr)
 
@@ -956,6 +956,10 @@ def main():
         else:
             pt.print_all_directory_entries(no_duplicates=args.no_duplicates, display_entry_header=args.entry_header,
                                            display_arch=args.detect_arch, csvfile=args.csvfile)
+
+    # If not outfile was specified, print the result to stdout
+    if out is not None:
+        sys.stdout.buffer.write(out)
 
 
 if __name__ == '__main__':
