@@ -659,7 +659,21 @@ class PSPTool:
                 except:
                     print("Signing exception")
 
-                sig_start = entry['address'] + len(entry['content']) - len(signature)
+                if entry['type'] in DIRECTORY_KEY_TYPES.keys():
+                    sig_start = entry['address'] + len(entry['content']) - len(signature)
+                else:
+                    if len(entry['content']) != entry['s_packed']:
+                        # len(entry['content'] is defined by the directory entry.
+                        # entry['s_packed'] is defined in the application header.
+                        # We need to make sure that the location of the signature
+                        # is calculated using the field in the header, not using
+                        # the entry size of the directory. 
+                        # The proper fix is to ensure that whenever an app is
+                        # changed, the corresponding size field of the directory
+                        # is changed accordingly.
+                        print("WARNING: content length != packed size for entry: %x" % (entry['type']))
+                    sig_start = entry['address'] + entry['s_packed'] - len(signature)
+
                 out[sig_start:sig_start+len(signature)] = signature
 
         if outfile is not None:
