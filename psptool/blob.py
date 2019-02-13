@@ -8,7 +8,7 @@ from firmware import Firmware
 from directory import Directory
 
 
-class Blob:
+class Blob(utils.NestedBuffer):
     _FIRMWARE_ENTRY_MAGIC = b'\xAA\x55\xAA\x55'
     _FIRMWARE_ENTRY_TABLE_BASE_ADDRESS = 0x20000
 
@@ -22,65 +22,66 @@ class Blob:
         'BHD',       # UINT32  BhdDirBase;   ///< Base Address for BHD directory
     ]
 
-    def __init__(self, rom_bytes: bytes):
-        self.bytes = rom_bytes
-        firmwares, directories = self._parse_entry_table()
+    def __init__(self, buffer: bytearray, size: int):
+        super().__init__(buffer, size)
 
-        self.firmwares = firmwares
-        self.directories = directories
+        self.directories: List[Directory] = []
+        self.firmwares: List[Firmware] = []
+
+        self._find_entry_table()
+        self._parse_entry_table()
 
         # todo: info members:
         #  self.range = (min, max)
 
-    def _parse_entry_table(self) -> (List[Firmware], List[Directory]):
+    def _find_entry_table(self):
         # AA55AA55 is to unspecific, so we require a word of padding before (to be tested)
-        m = re.search(b'\xff\xff\xff\xff' + self._FIRMWARE_ENTRY_MAGIC, self.bytes)
-
+        m = re.search(b'\xff\xff\xff\xff' + self._FIRMWARE_ENTRY_MAGIC, self.get_buffer())
         if m is None:
             utils.print_error_and_exit('Could not find any Firmware Entry Table!')
+        fet_offset = m.start() + 4
 
-        offset = m.start() + 4
-        size = 0
-
-        # Find out size by determining an FF-word as termination
-        while offset <= len(self.bytes) - 4:
-            if self.bytes[(offset + size):(offset + size + 4)] != b'\xff\xff\xff\xff':
-                size += 4
+        # Find out its size by determining an FF-word as termination
+        fet_size = 0
+        while fet_offset <= len(self.get_buffer()) - 4:
+            if self[(fet_offset + fet_size):(fet_offset + fet_size + 4)] != b'\xff\xff\xff\xff':
+                fet_size += 4
             else:
                 break
 
-        self.firmware_entry_table = self.bytes[offset:offset + size]
+        # Normally, the FET is found at offset 0x20000 in the ROM file
+        # If the actual offset is bigger because of e.g. additional ROM headers, shift our NestedBuffer accordingly
+        rom_offset = fet_offset - self._FIRMWARE_ENTRY_TABLE_BASE_ADDRESS
+        if rom_offset != 0:
+            utils.print_warning('Found Firmware Entry Table at 0x%x instead of 0x%x. All addresses will lack an offset '
+                                'of 0x%x.' % (fet_offset, self._FIRMWARE_ENTRY_TABLE_BASE_ADDRESS, rom_offset))
+
+        self.buffer_offset = rom_offset
+
+        # Now the FET can be found at its usual static offset of 0x20000 in shifted NestedBuffer
+        self.firmware_entry_table = utils.NestedBuffer(self, fet_size, self._FIRMWARE_ENTRY_TABLE_BASE_ADDRESS)
+
+    def _parse_entry_table(self) -> (List[Firmware], List[Directory]):
         entries = utils.chunker(self.firmware_entry_table[4:], 4)
-
-        # If the binary contains additional headers, shift those away by assuming the FET to be at 0x20000
-        bios_rom_offset = offset - self._FIRMWARE_ENTRY_TABLE_BASE_ADDRESS
-
-        if bios_rom_offset != 0:
-            print('Found Firmware Entry Table at 0x%x instead of 0x%x. All addresses will lack an offset of 0x%x.' %
-                  (offset, self._FIRMWARE_ENTRY_TABLE_BASE_ADDRESS, bios_rom_offset))
-            self.bytes = self.bytes[bios_rom_offset:]
-
-        firmwares = []
-        directories = []
 
         for index, entry in enumerate(entries):
             firmware_type = self._FIRMWARE_ENTRY_TYPES[index] if index < len(self._FIRMWARE_ENTRY_TYPES) else 'unknown'
             address = struct.unpack('<I', entry)[0] & 0x00FFFFFF
 
-            # assumption: address == 0 is an invalid entry
+            # assumption: offset == 0 is an invalid entry
             if address != 0:
-                directory = self.bytes[address:address + 16 * 8]
+                directory = self[address:address + 16 * 8]
                 magic = directory[:4]
 
                 # either this entry points to a PSP directory directly
                 if magic in [b'$PSP', b'$BHD']:
                     directory = Directory(self, address, firmware_type)
-                    directories.append(directory)
+                    self.directories.append(directory)
 
                     # if this Directory points to a secondary directory: add it, too
-                    if directory.secondary_directory_address is not None:
-                        secondary_directory = Directory(self, directory.secondary_directory_address, 'secondary')
-                        directories.append(secondary_directory)
+                    # if directory.secondary_directory_address is not None:
+                    #     secondary_directory = Directory(self, directory.secondary_directory_address, 'secondary')
+                    #     self.directories.append(secondary_directory)
 
                 # or this entry points to a combo-directory (i.e. two directories)
                 elif magic == b'2PSP':
@@ -89,25 +90,14 @@ class Blob:
 
                     for address in [psp_dir_one_addr, psp_dir_two_addr]:
                         directory = Directory(self, address, firmware_type)
-                        directories.append(directory)
+                        self.directories.append(directory)
 
                         # if this Directory points to a secondary directory: add it, too
                         if directory.secondary_directory_address is not None:
                             secondary_directory = Directory(self, directory.secondary_directory_address, 'secondary')
-                            directories.append(secondary_directory)
+                            self.directories.append(secondary_directory)
 
                 # or this entry is unparsable and thus a firmware
                 else:
-                    firmware = Firmware(self, firmware_type, address, magic)
-                    firmwares.append(firmware)
-
-        return firmwares, directories
-
-    def get_bytes(self) -> bytes:
-        return self.bytes
-
-    def set_bytes(self, address, bytes_):
-        self.bytes = self.bytes[:address] + bytes_ + self.bytes[address + len(bytes_):]
-
-    def get_bytes_at(self, address, size) -> bytes:
-        return self.bytes[address:address + size]
+                    firmware = Firmware(self, address, firmware_type, magic)
+                    self.firmwares.append(firmware)
