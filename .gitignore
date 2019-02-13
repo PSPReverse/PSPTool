@@ -87,3 +87,6 @@ kernel/linux
 
 # Fletcher binary
 tools/fletcher/fletcher
+
+# Test binaries
+psptool/test/binaries
