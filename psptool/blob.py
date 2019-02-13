@@ -3,9 +3,9 @@ import struct
 
 from typing import List
 
-from .utils import print_error_and_exit, chunker
-from .firmware import Firmware
-from .directory import Directory
+import utils
+from firmware import Firmware
+from directory import Directory
 
 
 class Blob:
@@ -37,7 +37,7 @@ class Blob:
         m = re.search(b'\xff\xff\xff\xff' + self._FIRMWARE_ENTRY_MAGIC, self.bytes)
 
         if m is None:
-            print_error_and_exit('Could not find any Firmware Entry Table!')
+            utils.print_error_and_exit('Could not find any Firmware Entry Table!')
 
         offset = m.start() + 4
         size = 0
@@ -50,7 +50,7 @@ class Blob:
                 break
 
         self.firmware_entry_table = self.bytes[offset:offset + size]
-        entries = chunker(self.firmware_entry_table[4:], 4)
+        entries = utils.chunker(self.firmware_entry_table[4:], 4)
 
         # If the binary contains additional headers, shift those away by assuming the FET to be at 0x20000
         bios_rom_offset = offset - self._FIRMWARE_ENTRY_TABLE_BASE_ADDRESS

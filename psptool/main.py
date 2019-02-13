@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-from .blob import Blob
+from blob import Blob
 
 
 class PSPTool:
@@ -9,7 +9,6 @@ class PSPTool:
             rom_bytes = f.read()
 
         self.blob = Blob(rom_bytes)
-        pass
 
 
 if __name__ == '__main__':

@@ -1,8 +1,5 @@
-from .blob import Blob
-
-
 class Firmware:
-    def __init__(self, parent_blob: Blob, firmware_type: str, address: int, magic: bytes):
+    def __init__(self, parent_blob, firmware_type: str, address: int, magic: bytes):
         self.blob = parent_blob
         self.address = address
         self.magic = magic

@@ -1,9 +1,3 @@
-import struct
-
-from .directory import Directory
-from .utils import chunker
-
-
 class Entry:
     def __init__(self, parent_directory, type_, size, address):
         self.directory = parent_directory

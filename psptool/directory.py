@@ -2,9 +2,8 @@ import struct
 
 from typing import List
 
-from .blob import Blob
-from .entry import Entry
-from .utils import chunker
+from entry import Entry
+from utils import chunker
 
 
 class Directory:
@@ -26,7 +25,7 @@ class Directory:
 
     _ENTRY_TYPES_SECONDARY_DIR = [0x40, 0x70]
 
-    def __init__(self, parent_blob: Blob, address: int, type_: str):
+    def __init__(self, parent_blob, address: int, type_: str):
         self.blob = parent_blob
         self.address = address
         self.type = type_
