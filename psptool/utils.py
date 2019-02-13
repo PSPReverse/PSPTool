@@ -27,3 +27,10 @@ def print_info(arg0, *nargs, **kwargs):
 def chunker(seq, size):
     """ Utility function to chunk seq into a list of size sized sequences. """
     return (seq[pos:pos + size] for pos in range(0, len(seq), size))
+
+def rstrip_padding(bytestring):
+    """ Takes a bytestring and strips trailing 0xFFFFFFFF dwords. """
+    i = 0
+    while bytestring[-(4+i):len(bytestring)-i] == b'\xff\xff\xff\xff':
+        i += 4
+    return bytestring[:len(bytestring)-i]

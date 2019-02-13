@@ -77,6 +77,11 @@ class Blob:
                     directory = Directory(self, address, firmware_type)
                     directories.append(directory)
 
+                    # if this Directory points to a secondary directory: add it, too
+                    if directory.secondary_directory_address is not None:
+                        secondary_directory = Directory(self, directory.secondary_directory_address, 'secondary')
+                        directories.append(secondary_directory)
+
                 # or this entry points to a combo-directory (i.e. two directories)
                 elif magic == b'2PSP':
                     psp_dir_one_addr = struct.unpack('<I', directory[10*4:10*4+4])[0] & 0x00FFFFFF
@@ -86,9 +91,23 @@ class Blob:
                         directory = Directory(self, address, firmware_type)
                         directories.append(directory)
 
+                        # if this Directory points to a secondary directory: add it, too
+                        if directory.secondary_directory_address is not None:
+                            secondary_directory = Directory(self, directory.secondary_directory_address, 'secondary')
+                            directories.append(secondary_directory)
+
                 # or this entry is unparsable and thus a firmware
                 else:
                     firmware = Firmware(self, firmware_type, address, magic)
                     firmwares.append(firmware)
 
         return firmwares, directories
+
+    def get_bytes(self) -> bytes:
+        return self.bytes
+
+    def set_bytes(self, address, bytes_):
+        self.bytes = self.bytes[:address] + bytes_ + self.bytes[address + len(bytes_):]
+
+    def get_bytes_at(self, address, size) -> bytes:
+        return self.bytes[address:address + size]
