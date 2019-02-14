@@ -28,11 +28,30 @@ class Blob(utils.NestedBuffer):
         self.directories: List[Directory] = []
         self.firmwares: List[Firmware] = []
 
+        self._parse_agesa_version()
+
         self._find_entry_table()
         self._parse_entry_table()
 
         # todo: info members:
         #  self.range = (min, max)
+
+    def __repr__(self):
+        return f'Blob(agesa_version={self.agesa_version}, len(firmwares)={len(self.firmwares)}, ' \
+               f'len(directories)={len(self.directories)})'
+
+    def _parse_agesa_version(self):
+        # from https://www.amd.com/system/files/TechDocs/44065_Arch2008.pdf
+
+        # todo: use NestedBuffers instead of saving by value
+        start = self.get_buffer().find(b'AGESA!')
+        version_string = self[start:start + 36]
+
+        agesa_magic = version_string[0:8]
+        component_name = version_string[9:16]
+        version = version_string[16:29]
+
+        self.agesa_version = str(b''.join([agesa_magic, b' ', component_name, version]), 'ascii')
 
     def _find_entry_table(self):
         # AA55AA55 is to unspecific, so we require a word of padding before (to be tested)
@@ -79,9 +98,9 @@ class Blob(utils.NestedBuffer):
                     self.directories.append(directory)
 
                     # if this Directory points to a secondary directory: add it, too
-                    # if directory.secondary_directory_address is not None:
-                    #     secondary_directory = Directory(self, directory.secondary_directory_address, 'secondary')
-                    #     self.directories.append(secondary_directory)
+                    if directory.secondary_directory_address is not None:
+                        secondary_directory = Directory(self, directory.secondary_directory_address, 'secondary')
+                        self.directories.append(secondary_directory)
 
                 # or this entry points to a combo-directory (i.e. two directories)
                 elif magic == b'2PSP':

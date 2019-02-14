@@ -14,3 +14,4 @@ class PSPTool:
 if __name__ == '__main__':
     # CLI stuff to create a PSPTool object and interact with it
     psp = PSPTool('test/binaries/ASUS_PRIME-X370-PRO-ASUS-3803.CAP')
+    pass

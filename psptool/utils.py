@@ -6,6 +6,10 @@ class NestedBuffer:
         self.parent_buffer = parent_buffer
         self.buffer_size = buffer_size
         self.buffer_offset = buffer_offset
+        assert(self.buffer_size <= self.buffer_offset + self.buffer_size)
+
+    def __len__(self):
+        return self.buffer_size
 
     def __getitem__(self, item):
         if isinstance(item, slice):

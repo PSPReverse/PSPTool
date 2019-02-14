@@ -63,7 +63,7 @@ class Directory(utils.NestedBuffer):
         self.body = utils.NestedBuffer(self, self._ENTRY_SIZES[self.magic] * self.count,
                                        buffer_offset=self._HEADER_SIZES[self.magic])
 
-        self.buffer_size = self.header.buffer_size + self.body.buffer_size
+        self.buffer_size = len(self.header) + len(self.body)
 
     def _parse_entries(self):
         for entry_bytes in self.body.get_chunks(self._entry_size):
@@ -74,5 +74,6 @@ class Directory(utils.NestedBuffer):
             # addresses are all starting at 0xff000000, but we just want everything from there
             entry_fields['offset'] &= 0x00FFFFFF
 
-            entry = Entry(self.parent_buffer, entry_fields['type'], entry_fields['size'], entry_fields['offset'])
+            entry = Entry.from_fields(self.parent_buffer, entry_fields['type'], entry_fields['size'],
+                                      entry_fields['offset'])
             self.entries.append(entry)
