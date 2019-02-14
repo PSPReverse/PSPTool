@@ -24,7 +24,7 @@ class Directory(utils.NestedBuffer):
 
     _ENTRY_TYPES_SECONDARY_DIR = [0x40, 0x70]
 
-    def __init__(self, parent_buffer: utils.NestedBuffer, buffer_offset: int, type_: str):
+    def __init__(self, parent_buffer, buffer_offset: int, type_: str):
         self.parent_buffer = parent_buffer
         self.buffer_offset = buffer_offset
 
@@ -35,6 +35,7 @@ class Directory(utils.NestedBuffer):
 
         self.type = type_
         self.entries: List[Entry] = []
+        self.unique_entries = set()
 
         self._entry_size = self._ENTRY_SIZES[self.magic]
         self._parse_entries()
@@ -44,9 +45,6 @@ class Directory(utils.NestedBuffer):
         for entry in self.entries:
             if entry.type in self._ENTRY_TYPES_SECONDARY_DIR:
                 self.secondary_directory_address = entry.buffer_offset
-
-        # todo: delete duplicates depending on their __repr__/__eq__
-        # self._unique_entries: set = set()
 
     def __repr__(self):
         return f'Directory(address={hex(self.get_address())}, type={self.type}, count={self.count})'
@@ -74,6 +72,13 @@ class Directory(utils.NestedBuffer):
             # addresses are all starting at 0xff000000, but we just want everything from there
             entry_fields['offset'] &= 0x00FFFFFF
 
-            entry = Entry.from_fields(self.parent_buffer, entry_fields['type'], entry_fields['size'],
+            entry = Entry.from_fields(self, self.parent_buffer, entry_fields['type'], entry_fields['size'],
                                       entry_fields['offset'])
+
+            for existing_entry in self.parent_buffer.unique_entries:
+                if entry == existing_entry:
+                    existing_entry.references.append(self)
+                    self.entries.append(existing_entry)
+
+            self.parent_buffer.unique_entries.add(entry)
             self.entries.append(entry)

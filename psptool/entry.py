@@ -9,22 +9,25 @@ class Entry(utils.NestedBuffer):
         pass
 
     @classmethod
-    def from_fields(cls, parent_buffer, type_, size, offset):
+    def from_fields(cls, parent_directory, parent_buffer, type_, size, offset):
         try:
             # Option 1: it's a PubkeyEntry
-            return PubkeyEntry(parent_buffer, type_, size, buffer_offset=offset)
+            new_entry = PubkeyEntry(parent_directory, parent_buffer, type_, size, buffer_offset=offset)
         except (cls.ParseError, AssertionError):
             try:
                 # Option 2: it's a HeaderEntry (most common)
-                return HeaderEntry(parent_buffer, type_, size, buffer_offset=offset)
+                new_entry = HeaderEntry(parent_directory, parent_buffer, type_, size, buffer_offset=offset)
             except (cls.ParseError, AssertionError):
                 # Option 3: it's a plain Entry
-                return Entry(parent_buffer, type_, size, buffer_offset=offset)
+                new_entry = Entry(parent_directory, parent_buffer, type_, size, buffer_offset=offset)
 
-    def __init__(self, parent_buffer, type_, buffer_size, buffer_offset: int):
+        return new_entry
+
+    def __init__(self, parent_directory, parent_buffer, type_, buffer_size, buffer_offset: int):
         super().__init__(parent_buffer, buffer_size, buffer_offset=buffer_offset)
 
         self.type = type_
+        self.references = [parent_directory]
 
         try:
             self._parse()
@@ -33,7 +36,14 @@ class Entry(utils.NestedBuffer):
 
     def __repr__(self):
         return f'{self.__class__.__name__}(type={hex(self.type)}, address={hex(self.get_address())}), ' \
-               f'size={hex(self.buffer_size)})'
+               f'size={hex(self.buffer_size)}, len(references)={len(self.references)})'
+
+    def __eq__(self, other):
+        return self.type == other.type and self.get_address() == other.get_address() and \
+               self.buffer_size == other.buffer_size
+
+    def __hash__(self):
+        return hash((self.type, self.get_address(), self.buffer_size))
 
     def _parse(self):
         pass
@@ -74,26 +84,19 @@ class PubkeyEntry(Entry):
 
 class HeaderEntry(Entry):
     def _parse(self):
-        # pubkey = parse_amd_pubkey(entry_content)
-        #
-        # if pubkey or entry_content[0xfc:0x100] != b'\x00\x00\x00\x00':
-        #     return {}
-        # else:
-        #     entry_content = entry_content[:0x100]
-
         self.header = utils.NestedBuffer(self, 0x100)
         self.body = utils.NestedBuffer(self, len(self) - 0x200, 0x100)
         self.signature = utils.NestedBuffer(self, 0x100, len(self) - 0x100)
 
         # todo: use NestedBuffers instead of saving by value
         self.id = self.header[0x10:0x14]
-        self.s_signed = struct.unpack('<I', self.header[0x14:0x18])[0]
-        self.sig_fp = hexlify(self.header[0x38:0x48])
+        self.size_signed = struct.unpack('<I', self.header[0x14:0x18])[0]
+        self.signature_fingerprint = hexlify(self.header[0x38:0x48])
         self.compressed = struct.unpack('<I', self.header[0x48:0x4c])[0]
-        self.s_full = struct.unpack('<I', self.header[0x50:0x54])[0]
+        self.size_full = struct.unpack('<I', self.header[0x50:0x54])[0]
         self.version = '.'.join([hex(b)[2:].upper() for b in self.header[0x63:0x5f:-1]])
         self.unknown = struct.unpack('<I', self.header[0x68:0x6c])[0]
-        self.s_packed = struct.unpack('<I', self.header[0x6c:0x70])[0]
+        self.size_packed = struct.unpack('<I', self.header[0x6c:0x70])[0]
 
         assert(self.compressed in [0, 1])
 

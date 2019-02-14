@@ -27,6 +27,7 @@ class Blob(utils.NestedBuffer):
 
         self.directories: List[Directory] = []
         self.firmwares: List[Firmware] = []
+        self.unique_entries = set()
 
         self._parse_agesa_version()
 
@@ -120,3 +121,9 @@ class Blob(utils.NestedBuffer):
                 else:
                     firmware = Firmware(self, address, firmware_type, magic)
                     self.firmwares.append(firmware)
+
+    def get_entry_by_type(self, type_):
+        for entry in self.unique_entries:
+            if entry.type == type_:
+                return entry
+        return None
