@@ -73,8 +73,8 @@ class Blob(utils.NestedBuffer):
         # If the actual offset is bigger because of e.g. additional ROM headers, shift our NestedBuffer accordingly
         rom_offset = fet_offset - self._FIRMWARE_ENTRY_TABLE_BASE_ADDRESS
         if rom_offset != 0:
-            utils.print_warning('Found Firmware Entry Table at 0x%x instead of 0x%x. All addresses will lack an offset '
-                                'of 0x%x.' % (fet_offset, self._FIRMWARE_ENTRY_TABLE_BASE_ADDRESS, rom_offset))
+            utils.print_warning('Found Firmware Entry Table at 0x%x instead of 0x%x.' %
+                                (fet_offset, self._FIRMWARE_ENTRY_TABLE_BASE_ADDRESS))
 
         self.buffer_offset = rom_offset
 

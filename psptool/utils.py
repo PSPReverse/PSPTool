@@ -13,18 +13,40 @@ class NestedBuffer:
 
     def __getitem__(self, item):
         if isinstance(item, slice):
-            stop = self.buffer_offset + self.buffer_size
-            if item.stop is not None:
-                assert(item.stop <= self.buffer_size)
-                stop = self.buffer_offset + item.stop
-            new_slice = slice(self.buffer_offset + item.start, stop, item.step)
+            new_slice = self._offset_slice(item)
             return self.parent_buffer[new_slice]
         else:
             assert(isinstance(item, int))
             return self.parent_buffer[item]
 
     def __setitem__(self, key, value):
-        self.parent_buffer[key] = value
+        if isinstance(key, slice):
+            new_slice = self._offset_slice(key)
+            self.parent_buffer[new_slice] = value
+        else:
+            assert(isinstance(key, int))
+            self.parent_buffer[self.buffer_offset + key] = value
+
+    def _offset_slice(self, old_slice):
+        if old_slice.start is None:
+            start = self.buffer_offset
+        else:
+            assert (old_slice.start <= self.buffer_size)
+            if old_slice.start < 0:
+                start = self.buffer_offset + old_slice.start % self.buffer_size
+            else:
+                start = self.buffer_offset + old_slice.start
+        if old_slice.stop is None:
+            stop = self.buffer_offset + self.buffer_size
+        else:
+            assert (old_slice.stop <= self.buffer_size)
+            if old_slice.stop < 0:
+                stop = self.buffer_offset + old_slice.stop % self.buffer_size
+            else:
+                stop = self.buffer_offset + old_slice.stop
+
+        new_slice = slice(start, stop, old_slice.step)
+        return new_slice
 
     def get_address(self) -> int:
         if isinstance(self.parent_buffer, NestedBuffer):
@@ -37,6 +59,9 @@ class NestedBuffer:
 
     def get_bytes(self, address: int, size: int) -> bytes:
         return bytes(self[address:address + size])
+
+    def set_bytes(self, address: int, size: int, value):
+        self[address:address + size] = value
 
     def get_chunks(self, size: int, offset: int = 0):
         return chunker(self[offset:], size)

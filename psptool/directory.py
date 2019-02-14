@@ -82,3 +82,16 @@ class Directory(utils.NestedBuffer):
 
             self.parent_buffer.unique_entries.add(entry)
             self.entries.append(entry)
+
+    def update_entry_fields(self, entry: Entry, type_, size, offset):
+        entry_index = None
+        for index, my_entry in enumerate(self.entries):
+            if my_entry == entry:
+                entry_index = index
+                break
+
+        assert(entry_index is not None)
+
+        # update type, size, offset, but not rsv0, rsv1 and rsv2
+        entry_bytes = b''.join([struct.pack('<I', value) for value in [type_, size, offset]])
+        self.body.set_bytes(self._ENTRY_SIZES[self.magic] * entry_index, 4 * 3, entry_bytes)

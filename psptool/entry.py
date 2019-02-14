@@ -48,6 +48,16 @@ class Entry(utils.NestedBuffer):
     def _parse(self):
         pass
 
+    def move_buffer(self, new_address, size):
+        current_address = self.get_address()
+        move_offset = new_address - current_address
+        self.buffer_offset += move_offset
+        self.buffer_size = size
+
+        # update all directories' header that point to this entry
+        for directory in self.references:
+            directory.update_entry_fields(self, self.type, self.buffer_size, self.buffer_offset)
+
 
 class PubkeyEntry(Entry):
     def _parse(self):
