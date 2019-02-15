@@ -1,10 +1,11 @@
 import struct
-import utils
+
+from .utils import NestedBuffer
 
 from binascii import hexlify
 
 
-class Entry(utils.NestedBuffer):
+class Entry(NestedBuffer):
     class ParseError(Exception):
         pass
 
@@ -94,9 +95,9 @@ class PubkeyEntry(Entry):
 
 class HeaderEntry(Entry):
     def _parse(self):
-        self.header = utils.NestedBuffer(self, 0x100)
-        self.body = utils.NestedBuffer(self, len(self) - 0x200, 0x100)
-        self.signature = utils.NestedBuffer(self, 0x100, len(self) - 0x100)
+        self.header = NestedBuffer(self, 0x100)
+        self.body = NestedBuffer(self, len(self) - 0x200, 0x100)
+        self.signature = NestedBuffer(self, 0x100, len(self) - 0x100)
 
         # todo: use NestedBuffers instead of saving by value
         self.id = self.header[0x10:0x14]

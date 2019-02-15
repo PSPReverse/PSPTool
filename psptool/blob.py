@@ -3,12 +3,12 @@ import struct
 
 from typing import List
 
-import utils
-from firmware import Firmware
-from directory import Directory
+from .utils import print_error_and_exit, NestedBuffer, print_warning, chunker
+from .firmware import Firmware
+from .directory import Directory
 
 
-class Blob(utils.NestedBuffer):
+class Blob(NestedBuffer):
     _FIRMWARE_ENTRY_MAGIC = b'\xAA\x55\xAA\x55'
     _FIRMWARE_ENTRY_TABLE_BASE_ADDRESS = 0x20000
 
@@ -58,7 +58,7 @@ class Blob(utils.NestedBuffer):
         # AA55AA55 is to unspecific, so we require a word of padding before (to be tested)
         m = re.search(b'\xff\xff\xff\xff' + self._FIRMWARE_ENTRY_MAGIC, self.get_buffer())
         if m is None:
-            utils.print_error_and_exit('Could not find any Firmware Entry Table!')
+            print_error_and_exit('Could not find any Firmware Entry Table!')
         fet_offset = m.start() + 4
 
         # Find out its size by determining an FF-word as termination
@@ -73,16 +73,16 @@ class Blob(utils.NestedBuffer):
         # If the actual offset is bigger because of e.g. additional ROM headers, shift our NestedBuffer accordingly
         rom_offset = fet_offset - self._FIRMWARE_ENTRY_TABLE_BASE_ADDRESS
         if rom_offset != 0:
-            utils.print_warning('Found Firmware Entry Table at 0x%x instead of 0x%x.' %
-                                (fet_offset, self._FIRMWARE_ENTRY_TABLE_BASE_ADDRESS))
+            print_warning('Found Firmware Entry Table at 0x%x instead of 0x%x.' %
+                          (fet_offset, self._FIRMWARE_ENTRY_TABLE_BASE_ADDRESS))
 
         self.buffer_offset = rom_offset
 
         # Now the FET can be found at its usual static offset of 0x20000 in shifted NestedBuffer
-        self.firmware_entry_table = utils.NestedBuffer(self, fet_size, self._FIRMWARE_ENTRY_TABLE_BASE_ADDRESS)
+        self.firmware_entry_table = NestedBuffer(self, fet_size, self._FIRMWARE_ENTRY_TABLE_BASE_ADDRESS)
 
     def _parse_entry_table(self) -> (List[Firmware], List[Directory]):
-        entries = utils.chunker(self.firmware_entry_table[4:], 4)
+        entries = chunker(self.firmware_entry_table[4:], 4)
 
         for index, entry in enumerate(entries):
             firmware_type = self._FIRMWARE_ENTRY_TYPES[index] if index < len(self._FIRMWARE_ENTRY_TYPES) else 'unknown'

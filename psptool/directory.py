@@ -1,11 +1,12 @@
 import struct
-import utils
+
+from .utils import NestedBuffer, chunker
+from .entry import Entry
 
 from typing import List
-from entry import Entry
 
 
-class Directory(utils.NestedBuffer):
+class Directory(NestedBuffer):
     ENTRY_FIELDS = ['type', 'size', 'offset', 'rsv0', 'rsv1', 'rsv2']
 
     _HEADER_SIZES = {
@@ -57,16 +58,16 @@ class Directory(utils.NestedBuffer):
         if self.magic == b'\xff\xff\xff\xff':
             pass
 
-        self.header = utils.NestedBuffer(self, self._HEADER_SIZES[self.magic])
-        self.body = utils.NestedBuffer(self, self._ENTRY_SIZES[self.magic] * self.count,
-                                       buffer_offset=self._HEADER_SIZES[self.magic])
+        self.header = NestedBuffer(self, self._HEADER_SIZES[self.magic])
+        self.body = NestedBuffer(self, self._ENTRY_SIZES[self.magic] * self.count,
+                                 buffer_offset=self._HEADER_SIZES[self.magic])
 
         self.buffer_size = len(self.header) + len(self.body)
 
     def _parse_entries(self):
         for entry_bytes in self.body.get_chunks(self._entry_size):
             entry_fields = {}
-            for key, word in zip(self.ENTRY_FIELDS, utils.chunker(entry_bytes, 4)):
+            for key, word in zip(self.ENTRY_FIELDS, chunker(entry_bytes, 4)):
                 entry_fields[key] = struct.unpack('<I', word)[0]
 
             # addresses are all starting at 0xff000000, but we just want everything from there
@@ -83,6 +84,10 @@ class Directory(utils.NestedBuffer):
             self.parent_buffer.unique_entries.add(entry)
             self.entries.append(entry)
 
+    def _update_fletcher(self):
+        # todo: implement
+        pass
+
     def update_entry_fields(self, entry: Entry, type_, size, offset):
         entry_index = None
         for index, my_entry in enumerate(self.entries):
@@ -95,3 +100,5 @@ class Directory(utils.NestedBuffer):
         # update type, size, offset, but not rsv0, rsv1 and rsv2
         entry_bytes = b''.join([struct.pack('<I', value) for value in [type_, size, offset]])
         self.body.set_bytes(self._ENTRY_SIZES[self.magic] * entry_index, 4 * 3, entry_bytes)
+
+        self._update_fletcher()

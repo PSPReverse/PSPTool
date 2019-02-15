@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-from blob import Blob
+from .blob import Blob
 
 
 class PSPTool:

@@ -1,7 +1,7 @@
-import utils
+from .utils import NestedBuffer
 
 
-class Firmware(utils.NestedBuffer):
+class Firmware(NestedBuffer):
     # todo: find out its size and make it a utils.NestedBuffer
     def __init__(self, parent_buffer, buffer_offset: int, firmware_type: str, magic: bytes):
         super().__init__(parent_buffer, 0x100, buffer_offset=buffer_offset)

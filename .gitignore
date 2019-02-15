@@ -90,3 +90,7 @@ tools/fletcher/fletcher
 
 # Test binaries
 psptool/test/binaries
+
+build
+dist
+*.egg-info
