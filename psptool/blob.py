@@ -6,6 +6,7 @@ from typing import List
 from .utils import print_error_and_exit, NestedBuffer, print_warning, chunker
 from .firmware import Firmware
 from .directory import Directory
+from .entry import Entry
 
 
 class Blob(NestedBuffer):
@@ -27,7 +28,9 @@ class Blob(NestedBuffer):
 
         self.directories: List[Directory] = []
         self.firmwares: List[Firmware] = []
+
         self.unique_entries = set()
+        self.pubkeys = {}
 
         self._parse_agesa_version()
 
@@ -122,8 +125,9 @@ class Blob(NestedBuffer):
                     firmware = Firmware(self, address, firmware_type, magic)
                     self.firmwares.append(firmware)
 
-    def get_entry_by_type(self, type_):
+    def get_entry_by_type(self, type_) -> Entry:
         for entry in self.unique_entries:
             if entry.type == type_:
                 return entry
-        return None
+
+        # todo: raise something?

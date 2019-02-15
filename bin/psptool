@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 
+import sys
 from psptool import PSPTool
 
 if __name__ == '__main__':
     # CLI stuff to create a PSPTool object and interact with it
-    pass
+    psp = PSPTool.from_file(sys.argv[1])
+    psp.ls()

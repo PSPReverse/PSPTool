@@ -1,7 +1,7 @@
 import struct
 
 from .utils import NestedBuffer, chunker
-from .entry import Entry
+from .entry import Entry, PubkeyEntry
 
 from typing import List
 
@@ -80,6 +80,9 @@ class Directory(NestedBuffer):
                 if entry == existing_entry:
                     existing_entry.references.append(self)
                     self.entries.append(existing_entry)
+
+            if isinstance(entry, PubkeyEntry):
+                self.parent_buffer.pubkeys[entry.key_id] = entry
 
             self.parent_buffer.unique_entries.add(entry)
             self.entries.append(entry)

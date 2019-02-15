@@ -1,3 +1,4 @@
+import string
 import struct
 
 from .utils import NestedBuffer
@@ -6,6 +7,46 @@ from binascii import hexlify
 
 
 class Entry(NestedBuffer):
+    DIRECTORY_ENTRY_TYPES = {
+        0x00: 'AMD_PUBLIC_KEY',
+        0x01: 'PSP_FW_BOOT_LOADER',
+        0x02: 'PSP_FW_TRUSTED_OS',
+        0x03: 'PSP_FW_RECOVERY_BOOT_LOADER',
+        0x04: 'PSP_NV_DATA',
+        0x05: 'BIOS_PUBLIC_KEY',
+        0x06: 'BIOS_RTM_FIRMWARE',
+        0x07: 'BIOS_RTM_SIGNATURE',
+        0x08: 'SMU_OFFCHIP_FW',
+        0x09: 'AMD_SEC_DBG_PUBLIC_KEY',
+        0x0A: 'OEM_PSP_FW_PUBLIC_KEY',
+        0x0B: 'AMD_SOFT_FUSE_CHAIN_01',
+        0x0C: 'PSP_BOOT_TIME_TRUSTLETS',
+        0x0D: 'PSP_BOOT_TIME_TRUSTLETS_KEY',
+        0x10: 'PSP_AGESA_RESUME_FW',
+        0x12: 'SMU_OFF_CHIP_FW_2',
+        0x1A: 'PSP_S3_NV_DATA',
+        0x5f: 'FW_PSP_SMUSCS',
+        0x60: 'FW_IMC',
+        0x61: 'FW_GEC',
+        0x62: 'FW_XHCI',
+        0x63: 'FW_INVALID',
+        0x108: 'PSP_SMU_FN_FIRMWARE',
+        0x118: 'PSP_SMU_FN_FIRMWARE2',
+
+        # Entry types named by us
+        #   Custom names are denoted by a leading '!' and comments by '~'
+        0x14: '!PSP_MCLF_TRUSTLETS',  # very similiar to ~PspTrustlets.bin~ in coreboot blobs
+        0x31: '0x31~ABL_ARM_CODE~',  # a _lot_ of strings and also some ARM code
+        0x38: '!PSP_ENCRYPTED_NV_DATA',
+        0x40: '!PL2_SECONDARY_DIRECTORY',
+        0x70: '!BL2_SECONDARY_DIRECTORY',
+        0x15f: '!FW_PSP_SMUSCS_2',  # seems to be a secondary FW_PSP_SMUSCS (see above)
+        0x112: '!SMU_OFF_CHIP_FW_3',  # seems to tbe a tertiary SMU image (see above)
+        0x39: '!SEV_APP',
+        0x30062: '0x30062~UEFI-IMAGE~'
+
+    }
+
     class ParseError(Exception):
         pass
 
@@ -48,6 +89,21 @@ class Entry(NestedBuffer):
 
     def _parse(self):
         pass
+
+    def get_readable_type(self):
+        if self.type in self.DIRECTORY_ENTRY_TYPES:
+            return self.DIRECTORY_ENTRY_TYPES[self.type]
+        else:
+            return ''
+
+    def get_readable_version(self):
+        return ''
+
+    def get_readable_magic(self):
+        return ''
+
+    def get_readable_signed_by(self):
+        return ''
 
     def move_buffer(self, new_address, size):
         current_address = self.get_address()
@@ -100,30 +156,41 @@ class HeaderEntry(Entry):
         self.signature = NestedBuffer(self, 0x100, len(self) - 0x100)
 
         # todo: use NestedBuffers instead of saving by value
-        self.id = self.header[0x10:0x14]
+        self.magic = self.header[0x10:0x14]
         self.size_signed = struct.unpack('<I', self.header[0x14:0x18])[0]
         self.signature_fingerprint = hexlify(self.header[0x38:0x48])
         self.compressed = struct.unpack('<I', self.header[0x48:0x4c])[0]
         self.size_full = struct.unpack('<I', self.header[0x50:0x54])[0]
-        self.version = '.'.join([hex(b)[2:].upper() for b in self.header[0x63:0x5f:-1]])
+        self.version = self.header[0x63:0x5f:-1]
         self.unknown = struct.unpack('<I', self.header[0x68:0x6c])[0]
         self.size_packed = struct.unpack('<I', self.header[0x6c:0x70])[0]
 
         assert(self.compressed in [0, 1])
 
-        # if header['id'] == b'\x01\x00\x00\x00':
-        #     # actually twice as long, but SMURULESMURULES is kinda redundant
-        #     header['id'] = entry_content[0x0:0x4]
-        # elif header['id'] == b'\x05\x00\x00\x00':
-        #     header['id'] = b'0x05'
+    def get_readable_version(self):
+        return '.'.join([hex(b)[2:].upper() for b in self.version])
 
-        # try:
-        #     # Try to encode the id as ascii
-        #     header['id'] = str(header['id'], encoding='ascii')
-        #     # and remove unprintable chars
-        #     header['id'] = ''.join(s for s in header['id'] if s in string.printable)
-        #     # If no printable chars are left, remove
-        #     if header['id'] == '':
-        #         del header['id']
-        # except UnicodeDecodeError:
-        #     del header['id']
+    def get_readable_magic(self):
+        if self.magic == b'\x01\x00\x00\x00':
+            # actually twice as long, but SMURULESMURULES is kinda redundant
+            readable_magic= self[0x0:0x4]
+        elif self.magic == b'\x05\x00\x00\x00':
+            readable_magic = b'0x05'
+        else:
+            readable_magic = self.magic
+
+        try:
+            # Try to encode the id as ascii
+            readable_magic = str(readable_magic, encoding='ascii')
+            # and remove unprintable chars
+            readable_magic = ''.join(s for s in readable_magic if s in string.printable)
+        except UnicodeDecodeError:
+            return ''
+
+        return readable_magic
+
+    def get_readable_signed_by(self):
+        if self.signature_fingerprint in self.parent_buffer.pubkeys:
+            pubkey_entry = self.parent_buffer.pubkeys[self.signature_fingerprint]
+
+            return pubkey_entry.get_readable_type()
