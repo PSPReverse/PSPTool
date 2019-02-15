@@ -1,0 +1,7 @@
+#!/usr/bin/env python3
+
+from psptool import PSPTool
+
+if __name__ == '__main__':
+    # CLI stuff to create a PSPTool object and interact with it
+    pass
