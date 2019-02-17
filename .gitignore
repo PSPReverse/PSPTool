@@ -89,7 +89,7 @@ kernel/linux
 tools/fletcher/fletcher
 
 # Test binaries
-psptool/test/binaries
+psptool2/test/binaries
 
 build
 dist
