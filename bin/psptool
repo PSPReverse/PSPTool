@@ -1,9 +1,18 @@
 #!/usr/bin/env python3
 
-import sys
 from psptool import PSPTool
+from psptool.utils import ObligingArgumentParser
+
+from argparse import RawTextHelpFormatter, SUPPRESS
 
 if __name__ == '__main__':
     # CLI stuff to create a PSPTool object and interact with it
-    psp = PSPTool.from_file(sys.argv[1])
+    parser = ObligingArgumentParser(description='List, extract and manipulate AMD PSP firmware inside BIOS ROMs.\n',
+                                    formatter_class=RawTextHelpFormatter, add_help=False)
+
+    parser.add_argument('file', help='Binary file to be parsed for PSP firmware (usually 16MB in size)')
+    parser.add_argument('-h', '--help', action='help', help='Show this help message and exit.\n\n')
+    args = parser.parse_args()
+
+    psp = PSPTool.from_file(args.file)
     psp.ls()

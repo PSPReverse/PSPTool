@@ -1,4 +1,14 @@
 import sys
+import argparse
+
+
+class ObligingArgumentParser(argparse.ArgumentParser):
+    """ Display the full help message whenever there is something wrong with the arguments.
+        (from https://groups.google.com/d/msg/argparse-users/LazV_tEQvQw/xJhBOm1qS5IJ) """
+    def error(self, message):
+        sys.stderr.write('Error: %s\n' % message)
+        self.print_help()
+        sys.exit(2)
 
 
 class NestedBuffer:
@@ -57,7 +67,8 @@ class NestedBuffer:
     def get_buffer(self):
         return self.parent_buffer
 
-    def get_bytes(self, address: int, size: int) -> bytes:
+    def get_bytes(self, address: int = 0x0, size: int = None) -> bytes:
+        size = self.buffer_size if size is None else size
         return bytes(self[address:address + size])
 
     def set_bytes(self, address: int, size: int, value):
