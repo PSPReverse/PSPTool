@@ -77,7 +77,7 @@ class Entry(NestedBuffer):
             raise Entry.ParseError()
 
     def __repr__(self):
-        return f'{self.__class__.__name__}(type={hex(self.type)}, address={hex(self.get_address())}), ' \
+        return f'{self.__class__.__name__}(type={hex(self.type)}, address={hex(self.get_address())}, ' \
                f'size={hex(self.buffer_size)}, len(references)={len(self.references)})'
 
     def __eq__(self, other):

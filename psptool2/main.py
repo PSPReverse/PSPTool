@@ -30,10 +30,10 @@ class PSPTool:
 
             print(t)
 
-            self.ls_entry(index, no_duplicates=no_duplicates, display_entry_header=display_entry_header)
+            self.ls_dir(index, no_duplicates=no_duplicates, display_entry_header=display_entry_header)
             print('\n')
 
-    def ls_entry(self, directory_index, verbose=False, no_duplicates=False, display_entry_header=False):
+    def ls_dir(self, directory_index, verbose=False, no_duplicates=False, display_entry_header=False):
         directory = self.blob.directories[directory_index]
 
         basic_fields = [' ', 'Entry', 'Address', 'Size', 'Type', 'Type Name', 'Magic', 'Version', 'Signed by']
