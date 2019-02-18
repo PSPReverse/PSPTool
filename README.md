@@ -10,7 +10,7 @@ It is based on reverse-engineering efforts of AMD's proprietary **simple filesys
 
 ## Installation
 
-```bash
+```
 git clone https://github.com/cwerling/psptool
 cd psptool
 sudo python3 setup.py install
@@ -20,7 +20,7 @@ sudo python3 setup.py install
 
 The first version of psptool has an extensive command line interface. Nevertheless, apart from major refactoring **psptool2's focus is on its use as a Python module**:
 
-```python
+```
 > from psptool2 import PSPTool
 > psp = PSPTool.from_file('original_bios.bin')
 > psp.blob.directories
