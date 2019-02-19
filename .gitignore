@@ -94,3 +94,5 @@ psptool2/test/binaries
 build
 dist
 *.egg-info
+
+*.swp
