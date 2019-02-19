@@ -23,6 +23,9 @@ class Blob(NestedBuffer):
         'BHD',       # UINT32  BhdDirBase;   ///< Base Address for BHD directory
     ]
 
+    class NoFirmwareEntryTableError(Exception):
+        pass
+
     def __init__(self, buffer: bytearray, size: int):
         super().__init__(buffer, size)
 
@@ -61,7 +64,7 @@ class Blob(NestedBuffer):
         # AA55AA55 is to unspecific, so we require a word of padding before (to be tested)
         m = re.search(b'\xff\xff\xff\xff' + self._FIRMWARE_ENTRY_MAGIC, self.get_buffer())
         if m is None:
-            print_error_and_exit('Could not find any Firmware Entry Table!')
+            raise self.NoFirmwareEntryTableError
         fet_offset = m.start() + 4
 
         # Find out its size by determining an FF-word as termination
