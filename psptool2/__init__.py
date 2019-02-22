@@ -1,1 +1,1 @@
-from .main import PSPTool
+from .main import PSPTool, Blob

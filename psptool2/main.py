@@ -1,6 +1,7 @@
 from prettytable import PrettyTable
 from .blob import Blob
 
+import operator
 
 class PSPTool:
     @classmethod
@@ -30,17 +31,23 @@ class PSPTool:
 
             print(t)
 
-            self.ls_dir(index, no_duplicates=no_duplicates, display_entry_header=display_entry_header)
+            self.ls_dir(index)
             print('\n')
 
-    def ls_dir(self, directory_index, verbose=False, no_duplicates=False, display_entry_header=False):
+    def ls_dir(self, directory_index):
         directory = self.blob.directories[directory_index]
+        self.ls_entries(entries=directory.entries)
+
+    def ls_entries(self, entries=None):
+        # list all entries of all directories by default (sorted by their address)
+        if entries is None:
+            entries = sorted(self.blob.unique_entries)
 
         basic_fields = [' ', 'Entry', 'Address', 'Size', 'Type', 'Type Name', 'Magic', 'Version', 'Signed by']
         t = PrettyTable(basic_fields)
         t.align = 'r'
 
-        for index, entry in enumerate(directory.entries):
+        for index, entry in enumerate(entries):
             t.add_row([
                 '',
                 index,

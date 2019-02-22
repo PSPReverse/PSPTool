@@ -87,6 +87,9 @@ class Entry(NestedBuffer):
     def __hash__(self):
         return hash((self.type, self.get_address(), self.buffer_size))
 
+    def __lt__(self, other):
+        return self.get_address() < other.get_address()
+
     def _parse(self):
         pass
 
