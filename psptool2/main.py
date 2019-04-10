@@ -9,7 +9,10 @@ class PSPTool:
         with open(filename, 'rb') as f:
             rom_bytes = bytearray(f.read())
 
-        return PSPTool(rom_bytes)
+        pt = PSPTool(rom_bytes)
+        pt.filename = filename
+
+        return pt
 
     def __init__(self, rom_bytes):
         self.blob = Blob(rom_bytes, len(rom_bytes))
