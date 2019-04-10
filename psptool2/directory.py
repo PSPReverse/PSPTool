@@ -29,6 +29,8 @@ class Directory(NestedBuffer):
         self.parent_buffer = parent_buffer
         self.buffer_offset = buffer_offset
 
+        self._count = None
+
         # a directory must parse itself before it knows its size and can initialize its buffer
         self._parse_header()
 
@@ -48,21 +50,31 @@ class Directory(NestedBuffer):
                 self.secondary_directory_address = entry.buffer_offset
 
     def __repr__(self):
-        return f'Directory(address={hex(self.get_address())}, type={self.type}, count={self.count})'
+        return f'Directory(address={hex(self.get_address())}, type={self.type}, magic={self.magic}, count={self.count})'
+
+    @property
+    def count(self):
+        return self._count
+
+    @count.setter
+    def count(self, value):
+        self._count = value
+
+        # update binary representation
+        self.header[8:12] = struct.pack('<I', self.count)
+        self._update_fletcher()
 
     def _parse_header(self):
         # ugly to do this manually, but we do not know our size yet
-        self.count = struct.unpack('<I', self.parent_buffer.get_bytes(self.buffer_offset + 8, 4))[0]
+        self._count = struct.unpack('<I', self.parent_buffer.get_bytes(self.buffer_offset + 8, 4))[0]
         self.magic = self.parent_buffer.get_bytes(self.buffer_offset, 4)
 
-        if self.magic == b'\xff\xff\xff\xff':
-            pass
-
         self.header = NestedBuffer(self, self._HEADER_SIZES[self.magic])
-        self.body = NestedBuffer(self, self._ENTRY_SIZES[self.magic] * self.count,
+        self.body = NestedBuffer(self, self._ENTRY_SIZES[self.magic] * self._count,
                                  buffer_offset=self._HEADER_SIZES[self.magic])
 
         self.buffer_size = len(self.header) + len(self.body)
+        self.checksum = self.header[4:8]
 
     def _parse_entries(self):
         for entry_bytes in self.body.get_chunks(self._entry_size):
