@@ -942,10 +942,11 @@ class PSPTool:
                 signed_by = self._pubkeys[entry['sig_fp']]
                 entry['signed_by'] = signed_by['type']
 
-                if self._verify_signature(entry):
-                    entry['signed_by'] += '\n[verified]'
-                else:
-                    entry['signed_by'] += '\n[not verified]'
+                # todo: fix
+                # if self._verify_signature(entry):
+                #     entry['signed_by'] += '\n[verified]'
+                # else:
+                #     entry['signed_by'] += '\n[not verified]'
 
             # The following operations might be to expensive or impossible on bad entry sizes
             if not (0 < entry['size'] < 0x100000):
