@@ -16,6 +16,13 @@ class PSPTool:
 
     def __init__(self, rom_bytes):
         self.blob = Blob(rom_bytes, len(rom_bytes))
+        self.filename = None
+
+    def __repr__(self):
+        if self.filename is not None:
+            return f'PSPTool(filename={self.filename})'
+        else:
+            return f'PSPTool(len(rom_bytes)={self.blob.buffer_size}'
 
     def to_file(self, filename):
         with open(filename, 'wb') as f:
