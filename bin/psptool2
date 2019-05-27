@@ -7,7 +7,10 @@ from argparse import RawTextHelpFormatter
 
 if __name__ == '__main__':
     # CLI stuff to create a PSPTool object and interact with it
-    parser = ObligingArgumentParser(description='List, extract and manipulate AMD PSP firmware inside BIOS ROMs.\n',
+    parser = ObligingArgumentParser(description='Display, extract and manipulate AMD PSP firmware inside BIOS ROMs.\n'
+                                                'Note: psptool2 is a rewrite of psptool focussing on usage as a \n'
+                                                '      Python package. Please use (legacy) \'psptool\' for advanced CLI'
+                                                ' usage.',
                                     formatter_class=RawTextHelpFormatter, add_help=False)
 
     parser.add_argument('file', help='Binary file to be parsed for PSP firmware (usually 16MB in size)')

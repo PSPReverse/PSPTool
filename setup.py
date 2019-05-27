@@ -10,6 +10,6 @@ setup(
     author='Christian Werling',
     author_email='crwerling@gmail.com',
     packages=['psptool2'],
-    scripts=['bin/psptool2'],
+    scripts=['bin/psptool', 'bin/psptool2'],
     install_requires=['prettytable'],
 )
