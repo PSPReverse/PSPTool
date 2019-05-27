@@ -90,6 +90,7 @@ tools/fletcher/fletcher
 
 # Test binaries
 psptool2/test/binaries
+psptool2/test/selected_binaries/
 
 build
 dist
