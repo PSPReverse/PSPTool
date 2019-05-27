@@ -1,12 +1,12 @@
 
 
-# psptool2
+# PSPTool
 
-psptool is a Swiss Army knife for dealing with **binary blobs** mainly **delivered with BIOS updates** targeting **AMD platforms**. 
+PSPTool is a Swiss Army knife for dealing with firmware of the **AMD Secure Processor** (formerly known as *Platform Security Processor* or **PSP**). It locates AMD firmware inside  **UEFI images** as part of BIOS updates targeting **AMD platforms**. 
 
-It is based on reverse-engineering efforts of AMD's proprietary **simple filesystem** used to **pack its blobs** into standardized **UEFI Firmware Images**. These are usually 16MB in size and can be conveniently parsed by [UEFITool](https://github.com/LongSoft/UEFITool). However, all binary blobs by AMD are located in an unparsable area of the UEFI image marked as *padding* by UEFITool.
+It is based on reverse-engineering efforts of AMD's **proprietary filesystem** used to **pack firmware blobs** into **UEFI Firmware Images**. These are usually 16MB in size and can be conveniently parsed by [UEFITool](https://github.com/LongSoft/UEFITool). However, all binary blobs by AMD are located in padding volumes unparsable by UEFITool.
 
-**psptool favourably works with BIOS ROM files** such as UEFI images – as they can be obtained labeled *BIOS updates* from OEMs and IBVs. However, it won't complain about additional headers such as an Aptio Capsule header.
+PSPTool favourably works with UEFI images as obtained through BIOS updates.
 
 ## Installation
 
@@ -16,9 +16,62 @@ cd psptool
 sudo python3 setup.py install
 ```
 
-## Usage
+## CLI Usage
 
-The first version of psptool has an extensive command line interface. Nevertheless, apart from major refactoring **psptool2's focus is on its use as a Python module**:
+PSPTool offers a range of features from the **command line**:
+
+```
+usage: psptool [-h] [-E | -X | -R | -U] file
+
+Display, extract and manipulate PSP firmware inside UEFI images
+
+positional arguments:
+  file                  Binary file to be parsed for PSP firmware
+
+optional arguments:
+  -h, --help            Show this help message and exit.
+
+  -E, --entries         Default: Parse and display PSP firmware entries.
+                        [-d idx] [-n] [-i] [-v]
+
+                        -d idx:     specifies directory_index (default: all directories)
+                        -n:         hide duplicate entries from listings
+                        -i:         display additional entry header info
+                        -v:         display even more info (AGESA Version, Entropy, MD5)
+                        -t csvfile: only display entries found in the given SPI trace
+                                    (see psptrace for details)
+  -X, --extract-entry   Extract one or more PSP firmware entries.
+                        [-d idx [-e idx]] [-n] [-u] [-k] [-v] [-o outfile]
+
+                        -d idx:  specifies directory_index (default: all directories)
+                        -e idx:  specifies entry_index (default: all entries)
+                        -n:      skip duplicate entries
+                        -u:      uncompress compressed entries
+                        -k:      convert _pubkeys into PEM format
+                        -v:      increase output verbosity
+                        -o file: specifies outfile/outdir (default: stdout/$PWD)
+  -R, --replace-directory-entry
+                        Copy a new entry body into the ROM file and update metadata accordingly.
+                        Note: The given address is assumed to be overwritable (e.g. padding).
+                        -d idx -e idx -b addr [-y] [-s subfile] [-o outfile]
+
+                        -d idx:  specifies directory_index
+                        -e idx:  specifies entry_index
+                        -b addr: specifies destination address of the new entry
+                        -s file: specifies subfile (i.e. the new entry) (default: stdin)
+                        -o file: specifies outfile (default: stdout)
+  -U, --update-signatures
+                        Re-sign all signatures in the ROM file with a given private key and export
+                        a new ROM file.
+                        -p private_key [-o outfile]
+
+                        -p file:   specifies a path to the private_key in PEM format for re-signing
+                        -o file:   specifies outfile (default: stdout)
+```
+
+## Python Usage
+
+A rewrite of PSPTool enables its **use as a Python module**, e.g. in an interactive IPython session:
 
 ```
 > from psptool2 import PSPTool
@@ -59,4 +112,8 @@ b'\x01\x00\x00\x00\x1b\xb9\x87\xc3YIF\x06\xb1t\x94V\x01\xc9\xea[\x1b\xb9\x87\xc3
 > psp.blob.set_bytes(0x60000, 0x1000, my_stuff)
 > psp.to_file('my_modified_bios.bin')
 ```
+
+## Code
+
+Since the `psptool2` Python package does not yet support the same functionality as PSPTool does, PSPTool's codebase found in `bin/psptool` is only meant for providing support for the command line interface. It is not subject to further development.
 
