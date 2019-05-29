@@ -1,15 +1,33 @@
 #!/usr/bin/env python3
 
+# PSPTrace - Correlate SPI captures created by a Saleae Logic Analyzer with PSP firmware from UEFI images
+# Copyright (C) 2019 Christian Werling
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
 import os
 import pickle
 import csv
+import sys
+import argparse
 
 from signal import signal, SIGPIPE, SIG_DFL
 from collections import deque
 from prettytable import PrettyTable
 
-from psptool import PSPTool, DIRECTORY_ENTRY_TYPES
-from common import *
+from psptool2 import PSPTool
+from psptool2.entry import Entry
 
 # from http://www.winbond.com.tw/resource-files/w25q128jv%20spi%20revb%2011082016.pdf
 WINBOND_INSTRUCTIONS = {
@@ -191,6 +209,15 @@ WINBOND_INSTRUCTIONS = {
 }
 
 
+class ObligingArgumentParser(argparse.ArgumentParser):
+    """ Display the full help message whenever there is something wrong with the arguments.
+        (from https://groups.google.com/d/msg/argparse-users/LazV_tEQvQw/xJhBOm1qS5IJ) """
+    def error(self, message):
+        sys.stderr.write('Error: %s\n' % message)
+        self.print_help()
+        sys.exit(2)
+
+
 # from https://stackoverflow.com/a/39358140
 class RangeDict(dict):
     def __getitem__(self, item):
@@ -279,23 +306,30 @@ def find_read_accesses(data):
     read_accesses = {}
 
     # use psptool to correlate addresses to firmware directory entries
-    directories = psptool._directories
-    directory_entries = [directory['entries'] for directory in directories]
+    directories = psptool.blob.directories
+    directory_entries = [directory.entries for directory in directories]
 
     # flatten list of lists
     all_entries = [entry for sublist in directory_entries for entry in sublist]
 
     # add directory headers as entries, too
-    all_entries += [{
-        'address': directory['address'],
-        'size': directory['size'],
-        'type': 'Header: ' + str(directory['magic'], 'ascii')
-    } for directory in directories]
+    # all_entries += [{
+    #     'address': directory.get_address(),
+    #     'size': directory.buffer_size,
+    #     'type': 'Header: ' + str(directory.magic, 'ascii')
+    # } for directory in directories]
 
     # create RangeDict in order to find entry types for addresses
     type_at_address_range = RangeDict({
-        range(entry['address'], entry['address'] + entry['size']):  # key is start and end address of the entry
-            entry['type'] for entry in all_entries if entry['size'] != 0xffffffff  # value is its type
+        ** {
+            range(entry.get_address(), entry.get_address() + entry.buffer_size):  # key is start and end address of the entry
+            entry.type
+            for entry in all_entries if entry.buffer_size != 0xffffffff  # value is its type
+        }, ** {
+            range(directory.header.get_address(), directory.header.get_address() + directory.header.buffer_size):
+            'Header: ' + str(directory.magic, 'ascii')
+            for directory in directories
+        }
     })
 
     last_end_time = 0
@@ -494,16 +528,13 @@ IO functions
 
 
 def display_overview(read_accesses):
-    basic_fields = ['No.', 'Lowest access', 'Range', 'Arch', 'Type', 'Info']
+    basic_fields = ['No.', 'Lowest access', 'Range', 'Type', 'Info']
     verbose_fields = ['Start [ns]', 'Highest access']
     all_fields = basic_fields + verbose_fields
 
     t = PrettyTable(all_fields)
-    t.int_format['Lowest access'] = '0x%.6x'
-    t.int_format['Highest access'] = '0x%.6x'
-    t.int_format['Range'] = '0x%.6x'
 
-    entry_types = DIRECTORY_ENTRY_TYPES
+    entry_types = Entry.DIRECTORY_ENTRY_TYPES
     overview_read_accesses = {}
     known_types = {}  # dict of (type, is_ccp) and original_access_time
 
@@ -535,11 +566,6 @@ def display_overview(read_accesses):
                                                                                  values['address'] + values['size'])
 
     for k, v in sorted(overview_read_accesses.items()):
-        if args.detect_arch:
-            arch = get_arch_for_type(v['type'], args.romfile)
-        else:
-            arch = ''
-
         size = v['highest_access'] - v['lowest_access']
 
         # Improve output of type # todo: remove code duplicate
@@ -556,13 +582,13 @@ def display_overview(read_accesses):
         latency_in_us = v['latency'] // 1000
 
         if latency_in_us > TIME_BLOCK_LATENCY_THRESHOLD:
-            t.add_row([''] * 8)
-            t.add_row([''] * 4 + ['~ %d µs delay ~' % latency_in_us] + [''] * 3)
-            t.add_row([''] * 8)
+            t.add_row([''] * 7)
+            t.add_row([''] * 3 + ['~ %d µs delay ~' % latency_in_us] + [''] * 3)
+            t.add_row([''] * 7)
 
         v['info'] = ' '.join(v['info'])
-        basic_values = [v['instr_index'], v['lowest_access'], size, arch, v['type'], v['info']]
-        verbose_values = [v['start_time'], v['highest_access']]
+        basic_values = [v['instr_index'], '0x%.6x' % v['lowest_access'], '0x%.6x' % size, v['type'], v['info']]
+        verbose_values = [v['start_time'], '0x%.6x' % v['highest_access']]
 
         t.add_row(basic_values + verbose_values)
 
@@ -582,15 +608,13 @@ def display_read_accesses(read_accesses):
     all_keys = ['instr_index', 'address', 'size', 'type', 'info', 'start_time', 'end_time', 'duration', 'latency']
 
     t = PrettyTable(all_fields)
-    t.int_format['Size'] = '0x%.2x'
-    t.int_format['Address'] = '0x%.6x'
     t.align['Info'] = 'l'
     t.align['Start [ns]'] = 'r'
     t.align['End [ns]'] = 'r'
     t.align['Duration [ns]'] = 'r'
     t.align['Latency [ns]'] = 'r'
 
-    entry_types = DIRECTORY_ENTRY_TYPES
+    entry_types = Entry.DIRECTORY_ENTRY_TYPES
 
     for start_time, values in sorted(read_accesses.items()):
         # Improve output of type
@@ -610,6 +634,9 @@ def display_read_accesses(read_accesses):
             t.add_row([''] * 3 + ['~ %d µs delay ~' % latency_in_us] + [''] * 5)
             t.add_row([''] * 9)
 
+        values['size'] = '0x%.2x' % values['size']
+        values['address'] = '0x%.6x' % values['address']
+
         t.add_row([values.get(key) for key in all_keys])
 
     # See which fields are actually demanded (depending on -v)
@@ -626,14 +653,13 @@ def main():
     # http://docs.python.org/library/signal.html
     signal(SIGPIPE, SIG_DFL)
 
-    parser = ObligingArgumentParser(description='Read in an SPI capture created by a Salae Logic Analyzer and a ROM '
+    parser = ObligingArgumentParser(description='Read in an SPI capture created by a Saleae Logic Analyzer and a ROM '
                                                 'file resembling the flash contents and display an access chronology. '
                                                 'On first load, psptrace needs to parse a lot of raw data which will '
                                                 'be saved on disk. All other loads will then be much faster.')
     parser.add_argument('csvfile', help='CSV file of SPI capture')
     parser.add_argument('romfile', help='ROM file of SPI contents')
-    parser.add_argument('-o', '--overview-mode', action='store_true')  # todo: add help
-    parser.add_argument('-a', '--detect-arch', help='display entry architecture (powered by cpu_rec)',
+    parser.add_argument('-o', '--overview-mode', help='aggregate accesses to the same firmware entry',
                         action='store_true')
     parser.add_argument('-n', '--no-duplicates', help='hide duplicate accesses (e.g. caused by multiple PSPs)',
                         action='store_true')
