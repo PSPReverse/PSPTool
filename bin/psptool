@@ -1055,7 +1055,7 @@ class PSPTool:
 
 
 def main():
-    parser = ObligingArgumentParser(description='Display, extract and manipulate PSP firmware inside UEFI images\n',
+    parser = ObligingArgumentParser(description='Display, extract, and manipulate PSP firmware inside UEFI images\n',
                                     formatter_class=RawTextHelpFormatter, add_help=False)
 
     parser.add_argument('file', help='Binary file to be parsed for PSP firmware')

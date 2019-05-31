@@ -23,7 +23,7 @@ PSPTool offers a range of features from the **command line**:
 ```
 usage: psptool [-h] [-E | -X | -R | -U] file
 
-Display, extract and manipulate PSP firmware inside UEFI images
+Display, extract, and manipulate PSP firmware inside UEFI images
 
 positional arguments:
   file                  Binary file to be parsed for PSP firmware
