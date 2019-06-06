@@ -111,7 +111,7 @@ class Blob(NestedBuffer):
             address = struct.unpack('<I', entry)[0] & 0x00FFFFFF
 
             # assumption: offset == 0 is an invalid entry
-            if address != 0:
+            if address not in [0x0, 0xfffffe]:
                 directory = self[address:address + 16 * 8]
                 magic = directory[:4]
 
