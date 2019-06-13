@@ -99,7 +99,7 @@ class Entry(NestedBuffer):
 
     def __eq__(self, other):
         return self.type == other.type and self.get_address() == other.get_address() and \
-               self.buffer_size == other.buffer_size
+              self.buffer_size == other.buffer_size
 
     def __hash__(self):
         return hash((self.type, self.get_address(), self.buffer_size))

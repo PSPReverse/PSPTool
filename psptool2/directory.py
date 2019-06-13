@@ -129,6 +129,7 @@ class Directory(NestedBuffer):
         assert(entry_index is not None)
 
         # update type, size, offset, but not rsv0, rsv1 and rsv2
+        offset |= 0xFF000000
         entry_bytes = b''.join([struct.pack('<I', value) for value in [type_, size, offset]])
         self.body.set_bytes(self._ENTRY_SIZES[self.magic] * entry_index, 4 * 3, entry_bytes)
 

@@ -144,9 +144,11 @@ class Blob(NestedBuffer):
                     firmware = Firmware(self, address, firmware_type, magic)
                     self.firmwares.append(firmware)
 
-    def get_entry_by_type(self, type_) -> Entry:
+    def get_entries_by_type(self, type_) -> List[Entry]:
+        entries = []
+
         for entry in self.unique_entries:
             if entry.type == type_:
-                return entry
+                entries.append(entry)
 
-        # todo: raise something?
+        return entries
