@@ -91,6 +91,7 @@ tools/fletcher/fletcher
 # Test binaries
 psptool2/test/binaries
 psptool2/test/selected_binaries/
+psptool2/test/latest-ryzen-june-2019
 
 build
 dist

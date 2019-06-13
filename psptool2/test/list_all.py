@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-
 # PSPTool - Display, extract and manipulate PSP firmware inside UEFI images
 # Copyright (C) 2019 Christian Werling, Robert Buhren
 #
@@ -17,23 +15,23 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import os
-from psptool2 import PSPTool, Blob
 
-path = '/Users/cwerling/Git/psptool2/psptool2/test/binaries'
+from .. import PSPTool, Blob
 
-for subdir, dirs, files in os.walk(path):
-    for file in files:
-        if file[0] == '.':
-            continue
-        filename = os.path.join(subdir, file)
+path = 'psptool2/test/latest-ryzen-june-2019'
 
-        print(f'File: {filename}')
-        try:
-            psp = PSPTool.from_file(f'{filename}')
-            print(psp.blob.agesa_version)
-            print(f'AMD Public Key: {psp.blob.get_entry_by_type(0).key_id}')
+if __name__ == '__main__':
+    for subdir, dirs, files in os.walk(path):
+        for file in files:
+            if file[0] == '.':
+                continue
+            filename = os.path.join(subdir, file)
+
+            try:
+                psp = PSPTool.from_file(f'{filename}')
+                print(psp)
+                psp.ls()
+
+            except Blob.NoFirmwareEntryTableError:
+                print('No FET found!')
             print()
-            contains_amd_tee = psp.blob.get_bytes().find(b'AMD-TEE')
-            print(f'Contains AMD-TEE: {contains_amd_tee}')
-        except Blob.NoFirmwareEntryTableError:
-            print('No FET found!')
