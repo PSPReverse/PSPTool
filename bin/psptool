@@ -361,8 +361,8 @@ class PSPTool:
         bios_rom_offset = offset - FIRMWARE_ENTRY_TABLE_BASE_ADDRESS
 
         if bios_rom_offset != 0:
-            print('Found Firmware Entry Table at 0x%x instead of 0x%x. All addresses will lack an offset of 0x%x.' %
-                  (offset, FIRMWARE_ENTRY_TABLE_BASE_ADDRESS, bios_rom_offset))
+            print_warning('Found Firmware Entry Table at 0x%x instead of 0x%x. All addresses will lack an offset of '
+                          '0x%x.' % (offset, FIRMWARE_ENTRY_TABLE_BASE_ADDRESS, bios_rom_offset))
             self.binary = self.binary[bios_rom_offset:]
 
         firmwares = []
@@ -868,7 +868,7 @@ class PSPTool:
                       hashes.SHA256()
                     )
                 except:
-                    print("Signing exception")
+                    print_warning("Signing exception")
 
                 if entry['type'] in DIRECTORY_KEY_TYPES.keys():
                     sig_start = entry['address'] + len(entry['content']) - len(signature)
@@ -882,7 +882,7 @@ class PSPTool:
                         # The proper fix is to ensure that whenever an app is
                         # changed, the corresponding size field of the directory
                         # is changed accordingly.
-                        print("WARNING: content length != packed size for entry: %x" % (entry['type']))
+                        print_warning("WARNING: content length != packed size for entry: %x" % (entry['type']))
                     sig_start = entry['address'] + entry['s_packed'] - len(signature)
 
                 out[sig_start:sig_start+len(signature)] = signature
@@ -1137,7 +1137,7 @@ def main():
     psp = PSPTool(binary, verbose=args.verbose)
 
     if args.verbose:
-        print(psp.agesa_version)
+        print_info(psp.agesa_version)
 
     # Now follows an ugly but necessary argument dependency checking
     if args.extract_entry:
