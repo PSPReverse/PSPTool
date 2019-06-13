@@ -18,6 +18,7 @@ import string
 import struct
 
 from .utils import NestedBuffer
+from .utils import shannon
 
 from binascii import hexlify
 
@@ -124,6 +125,9 @@ class Entry(NestedBuffer):
     def get_readable_signed_by(self):
         return ''
 
+    def shannon_entropy(self):
+        return shannon(self[:])
+
     def move_buffer(self, new_address, size):
         current_address = self.get_address()
         move_offset = new_address - current_address
@@ -171,12 +175,11 @@ class PubkeyEntry(Entry):
 class HeaderEntry(Entry):
     def _parse(self):
         self.header = NestedBuffer(self, 0x100)
-        self.body = NestedBuffer(self, len(self) - 0x200, 0x100)
-        self.signature = NestedBuffer(self, 0x100, len(self) - 0x100)
 
         # todo: use NestedBuffers instead of saving by value
         self.magic = self.header[0x10:0x14]
         self.size_signed = struct.unpack('<I', self.header[0x14:0x18])[0]
+        self.encrypted = struct.unpack('<I', self.header[0x18:0x1c])[0]
         self.signature_fingerprint = hexlify(self.header[0x38:0x48])
         self.compressed = struct.unpack('<I', self.header[0x48:0x4c])[0]
         self.size_full = struct.unpack('<I', self.header[0x50:0x54])[0]
@@ -184,7 +187,18 @@ class HeaderEntry(Entry):
         self.unknown = struct.unpack('<I', self.header[0x68:0x6c])[0]
         self.size_packed = struct.unpack('<I', self.header[0x6c:0x70])[0]
 
+        self.unknown_fingerprint1 = hexlify(self.header[0x20:0x30])
+        self.unknown_bool = struct.unpack('<I', self.header[0x7c:0x80])[0]
+        self.unknown_fingerprint2 = hexlify(self.header[0x80:0x90])
+
         assert(self.compressed in [0, 1])
+        assert(self.encrypted in [0, 1])
+
+        # update buffer size with more precise size_packed
+        self.buffer_size = self.size_packed
+
+        self.body = NestedBuffer(self, len(self) - 0x200, 0x100)
+        self.signature = NestedBuffer(self, 0x100, len(self) - 0x100)
 
     def get_readable_version(self):
         return '.'.join([hex(b)[2:].upper() for b in self.version])
@@ -213,3 +227,6 @@ class HeaderEntry(Entry):
             pubkey_entry = self.parent_buffer.pubkeys[self.signature_fingerprint]
 
             return pubkey_entry.get_readable_type()
+
+    def shannon_entropy(self):
+        return shannon(self.body[:])

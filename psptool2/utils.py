@@ -16,6 +16,7 @@
 
 import sys
 import argparse
+import math
 
 
 class ObligingArgumentParser(argparse.ArgumentParser):
@@ -124,3 +125,24 @@ def rstrip_padding(bytestring):
     while bytestring[-(4+i):len(bytestring)-i] == b'\xff\xff\xff\xff':
         i += 4
     return bytestring[:len(bytestring)-i]
+
+
+def shannon(s):
+    """ Performs a Shannon entropy analysis on a given block of s.
+    from: https://github.com/ReFirmLabs/binwalk """
+
+    entropy = 0
+
+    if s:
+        length = len(s)
+
+        seen = dict((x, 0) for x in range(0, 256))
+        for byte in s:
+            seen[byte] += 1
+
+        for x in range(0, 256):
+            p_x = float(seen[x]) / length
+            if p_x > 0:
+                entropy -= p_x * math.log(p_x, 2)
+
+    return entropy / 8
