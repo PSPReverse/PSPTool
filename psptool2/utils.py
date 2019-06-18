@@ -17,6 +17,7 @@
 import sys
 import argparse
 import math
+import zlib
 
 
 class ObligingArgumentParser(argparse.ArgumentParser):
@@ -84,9 +85,9 @@ class NestedBuffer:
     def get_buffer(self):
         return self.parent_buffer
 
-    def get_bytes(self, address: int = 0x0, size: int = None) -> bytes:
+    def get_bytes(self, offset: int = 0x0, size: int = None) -> bytes:
         size = self.buffer_size if size is None else size
-        return bytes(self[address:address + size])
+        return bytes(self[offset:offset + size])
 
     def set_bytes(self, address: int, size: int, value):
         self[address:address + size] = value
@@ -146,3 +147,47 @@ def shannon(s):
                 entropy -= p_x * math.log(p_x, 2)
 
     return entropy / 8
+
+
+# The order is important here, as 78da is the most common magic and others might produce false positives
+ZLIB_TYPES = {
+    b'\x78\xda': 'Zlib compressed data, best compression',
+    b'\x78\x9c': 'Zlib compressed data, default compression',
+    b'\x78\x5e': 'Zlib compressed data, compressed',
+    b'\x78\x01': 'Zlib header, no compression'
+}
+
+
+def zlib_find_header(s):
+    """ Checks s for any zlib magic bytes and returns the offset (or -1). """
+
+    # Only check the first 0x500 bytes, as the rest is too unlikely to be valid
+    s = s[:0x500]
+
+    for zlib_magic in ZLIB_TYPES.keys():
+        # Check the most common location at 0x100 first to avoid false positives and save time
+        if s[0x100:0x102] == zlib_magic:
+            return 0x100
+
+        zlib_start = s.find(zlib_magic)
+
+        if zlib_start != -1:
+            return zlib_start
+
+    return -1
+
+
+def zlib_decompress(s):
+    """ Checks s for the first appearance of a zlib header and returns the uncompressed start of s as well as the
+    decompressed section. If no zlib header is found, s is returned as is. """
+
+    zlib_start = zlib_find_header(s)
+
+    if zlib_start != -1:
+        uncompressed = s[:zlib_start]
+        compressed = s[zlib_start:]
+        decompressed = zlib.decompress(compressed)
+
+        return uncompressed + decompressed
+
+    return s

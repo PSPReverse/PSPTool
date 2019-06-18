@@ -94,10 +94,6 @@ class Blob(NestedBuffer):
         # Normally, the FET is found at offset 0x20000 in the ROM file
         # If the actual offset is bigger because of e.g. additional ROM headers, shift our NestedBuffer accordingly
         rom_offset = fet_offset - self._FIRMWARE_ENTRY_TABLE_BASE_ADDRESS
-        if rom_offset != 0:
-            print_warning('Found Firmware Entry Table at 0x%x instead of 0x%x.' %
-                          (fet_offset, self._FIRMWARE_ENTRY_TABLE_BASE_ADDRESS))
-
         self.buffer_offset = rom_offset
 
         # Now the FET can be found at its usual static offset of 0x20000 in shifted NestedBuffer

@@ -69,11 +69,15 @@ if __name__ == '__main__':
 
                 for bootloader in bootloaders:
                     try:
+                        signing_pubkey = psp.blob.pubkeys[bootloader.signature_fingerprint]
+
                         all_bootloaders.append({
                             'vendor': get_vendor(file),
                             'agesa': f'{get_arch(psp.blob.agesa_version[9:])}: {psp.blob.agesa_version[9:]}',
                             'chipset': get_chipset(file),
-                            'pubkey': amd_pubkey.key_id[:4],
+                            'pubkey': signing_pubkey.get_readable_magic(),
+                            'modulus_size': hex(len(signing_pubkey.modulus)),
+                            'verified': bootloader.verify_signature(),
                             'bl_version': bootloader.get_readable_version(),
                             'bl_encrypted': bootloader.encrypted,
                             'bl_fp1': bootloader.unknown_fingerprint1[:4],
@@ -81,12 +85,12 @@ if __name__ == '__main__':
                             'bl_fp2': bootloader.unknown_fingerprint2[:4],
                             'file': file
                         })
-                    except:
+                    except AttributeError:
                         print('Not a valid bootloader!')
             except Blob.NoFirmwareEntryTableError:
                 print('No FET found!')
 
-    pt = PrettyTable(['vendor', 'agesa', 'chipset', 'pubkey', 'bl_version', 'bl_encrypted', 'bl_fp1', 'bl_unkn_bool', 'bl_fp2', 'file'])
+    pt = PrettyTable(['vendor', 'agesa', 'chipset', 'pubkey', 'modulus_size', 'verified', 'bl_version', 'bl_encrypted', 'bl_fp1', 'bl_unkn_bool', 'bl_fp2', 'file'])
 
     for psp in all_bootloaders:
         pt.add_row([value for value in psp.values()])

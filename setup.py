@@ -11,5 +11,5 @@ setup(
     author_email='cwerling@posteo.de',
     packages=['psptool2'],
     scripts=['bin/psptool', 'bin/psptool2', 'bin/psptrace'],
-    install_requires=['prettytable'],
+    install_requires=['cryptography', 'prettytable'],
 )

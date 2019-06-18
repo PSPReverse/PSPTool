@@ -19,8 +19,19 @@ import struct
 
 from .utils import NestedBuffer
 from .utils import shannon
+from .utils import print_warning
+from .utils import chunker
+from .utils import zlib_decompress
 
 from binascii import hexlify
+from base64 import b64encode
+from hashlib import md5
+
+from cryptography.hazmat.primitives.serialization import load_der_public_key
+from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives.asymmetric import padding
+from cryptography.hazmat.primitives import hashes
+from cryptography.exceptions import InvalidSignature
 
 
 class Entry(NestedBuffer):
@@ -85,8 +96,13 @@ class Entry(NestedBuffer):
     def __init__(self, parent_directory, parent_buffer, type_, buffer_size, buffer_offset: int):
         super().__init__(parent_buffer, buffer_size, buffer_offset=buffer_offset)
 
+        self.blob = parent_buffer
         self.type = type_
         self.references = [parent_directory]
+
+        self.compressed = False
+        self.signed = False
+        self.encrypted = False
 
         try:
             self._parse()
@@ -218,21 +234,28 @@ class HeaderEntry(Entry):
 
         assert(self.compressed in [0, 1])
         assert(self.encrypted in [0, 1])
+        assert(self.get_readable_version() not in ['0.0.0.0', 'FF.FF.FF.FF'])
 
         # update buffer size with more precise size_packed
         self.buffer_size = self.size_packed
 
-        self.body = NestedBuffer(self, len(self) - 0x200, 0x100)
-        self.signature = NestedBuffer(self, 0x100, len(self) - 0x100)
+        # Note: This is a heuristic and it would be better to find out by looking at the signing key's modulus size.
+        # However, this might not have been parsed at this point.
+        signature_size = 0x100                            # Assume a default signature size of 0x100,
+        if self.size_packed - self.size_signed == 0x300:  # unless the size_signed and size_packed indicate a 0x200 sig.
+            signature_size = 0x200
+
+        self.body = NestedBuffer(self, len(self) - 0x100 - signature_size, 0x100)
+        self.signature = NestedBuffer(self, 0x100, len(self) - signature_size)
 
     def get_readable_version(self):
         return '.'.join([hex(b)[2:].upper() for b in self.version])
 
     def get_readable_magic(self):
-        if self.magic == b'\x01\x00\x00\x00':
+        # if self.magic == b'\x01\x00\x00\x00':
             # actually twice as long, but SMURULESMURULES is kinda redundant
-            readable_magic= self[0x0:0x4]
-        elif self.magic == b'\x05\x00\x00\x00':
+            # readable_magic= self[0x0:0x4]
+        if self.magic == b'\x05\x00\x00\x00':
             readable_magic = b'0x05'
         else:
             readable_magic = self.magic
@@ -248,10 +271,51 @@ class HeaderEntry(Entry):
         return readable_magic
 
     def get_readable_signed_by(self):
-        if self.signature_fingerprint in self.parent_buffer.pubkeys:
-            pubkey_entry = self.parent_buffer.pubkeys[self.signature_fingerprint]
+        return str(self.signature_fingerprint, encoding='ascii').upper()[:4]
 
-            return pubkey_entry.get_readable_type()
+    def get_decompressed_body(self) -> bytes:
+        if not self.compressed:
+            return self.body.get_bytes()
+        else:
+            return zlib_decompress(self.body.get_bytes())
 
     def shannon_entropy(self):
         return shannon(self.body[:])
+
+    def verify_signature(self):
+        if self.buffer_size == 0:
+            return False
+
+        try:
+            pubkey: PubkeyEntry = self.blob.pubkeys[self.signature_fingerprint]
+        except KeyError:
+            print_warning(f'Corresponding public key ({self.signature_fingerprint[:4]}) not found. Signature '
+                          f'verification failed.')
+            return False
+
+        signature_size = len(pubkey.modulus)
+
+        if signature_size != 0x100:
+            print_warning('Signatures of other key length than 2048 bit are unsupported.')
+            return False
+
+        signed_data = self.header.get_bytes() + self.get_decompressed_body()
+        signature = self.get_bytes(offset=self.buffer_size - signature_size, size=signature_size)
+
+        pubkey_der_encoded = pubkey.get_der_encoded()
+        crypto_pubkey = load_der_public_key(pubkey_der_encoded, backend=default_backend())
+
+        try:
+            crypto_pubkey.verify(
+                signature,
+                signed_data,
+                padding.PSS(
+                    mgf=padding.MGF1(hashes.SHA256()),
+                    salt_length=32
+                ),
+                hashes.SHA256()
+            )
+        except InvalidSignature:
+            return False
+
+        return True

@@ -17,7 +17,6 @@
 from prettytable import PrettyTable
 from .blob import Blob
 
-import operator
 
 class PSPTool:
     @classmethod
@@ -44,7 +43,7 @@ class PSPTool:
         with open(filename, 'wb') as f:
             f.write(self.blob.get_buffer())
 
-    def ls(self, no_duplicates=False, display_entry_header=False):
+    def ls(self):
         for index, directory in enumerate(self.blob.directories):
             t = PrettyTable(['Directory', 'Addr', 'Type', 'Magic', 'Secondary Directory'])
             t.add_row([
@@ -69,11 +68,21 @@ class PSPTool:
         if entries is None:
             entries = sorted(self.blob.unique_entries)
 
-        basic_fields = [' ', 'Entry', 'Address', 'Size', 'Type', 'Type Name', 'Magic', 'Version', 'Signed by']
+        basic_fields = [' ', 'Entry', 'Address', 'Size', 'Type', 'Type Name', 'Magic', 'Version', 'Info']
         t = PrettyTable(basic_fields)
         t.align = 'r'
 
         for index, entry in enumerate(entries):
+            info = []
+            if entry.compressed:
+                info.append('compressed')
+            if entry.signed:
+                info.append('signed(%s)' % entry.get_readable_signed_by())
+                if entry.verify_signature():
+                    info.append('verified')
+            if entry.encrypted:
+                info.append('encrypted')
+
             t.add_row([
                 '',
                 index,
@@ -83,7 +92,7 @@ class PSPTool:
                 entry.get_readable_type(),
                 entry.get_readable_magic(),
                 entry.get_readable_version(),
-                entry.get_readable_signed_by()
+                ', '.join(info)
             ])
 
         print(t.get_string(fields=basic_fields))
