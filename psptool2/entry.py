@@ -171,6 +171,30 @@ class PubkeyEntry(Entry):
         else:
             raise Entry.ParseError()
 
+    def get_readable_magic(self):
+        # use this to show the first four characters of the key ID
+        return str(self.key_id[:4], encoding='ascii').upper()
+
+    def get_der_encoded(self):
+        if struct.unpack('>I', self.pubexp)[0] != 65537:
+            raise NotImplementedError('Only an exponent of 65537 is supported.')
+
+        if len(self.modulus) == 0x100:
+            der_encoding = b'\x30\x82\x01\x22\x30\x0D\x06\x09\x2A\x86\x48\x86\xF7\x0D\x01\x01\x01\x05\x00\x03\x82\x01' \
+                           b'\x0F\x00\x30\x82\x01\x0A\x02\x82\x01\x01\x00' + self.modulus + b'\x02\x03\x01\x00\x01'
+        elif len(self.modulus) == 0x200:
+            der_encoding = b'\x30\x82\x02\x22\x30\x0D\x06\x09\x2A\x86\x48\x86\xF7\x0D\x01\x01\x01\x05\x00\x03\x82\x02' \
+                           b'\x0F\x00\x30\x82\x02\x0A\x02\x82\x02\x01\x00' + self.modulus + b'\x02\x03\x01\x00\x01'
+        else:
+            return None
+
+        return der_encoding
+
+    def get_pem_encoded(self):
+        return b'-----BEGIN PUBLIC KEY-----\n' + \
+               b'\n'.join(chunker(b64encode(self.get_der_encoded()), 64)) + \
+               b'\n-----END PUBLIC KEY-----\n'
+
 
 class HeaderEntry(Entry):
     def _parse(self):
@@ -179,9 +203,10 @@ class HeaderEntry(Entry):
         # todo: use NestedBuffers instead of saving by value
         self.magic = self.header[0x10:0x14]
         self.size_signed = struct.unpack('<I', self.header[0x14:0x18])[0]
-        self.encrypted = struct.unpack('<I', self.header[0x18:0x1c])[0]
+        self.encrypted = struct.unpack('<I', self.header[0x18:0x1c])[0] == 1
+        self.signed = struct.unpack('<I', self.header[0x30:0x34])[0] == 1
         self.signature_fingerprint = hexlify(self.header[0x38:0x48])
-        self.compressed = struct.unpack('<I', self.header[0x48:0x4c])[0]
+        self.compressed = struct.unpack('<I', self.header[0x48:0x4c])[0] == 1
         self.size_full = struct.unpack('<I', self.header[0x50:0x54])[0]
         self.version = self.header[0x63:0x5f:-1]
         self.unknown = struct.unpack('<I', self.header[0x68:0x6c])[0]
