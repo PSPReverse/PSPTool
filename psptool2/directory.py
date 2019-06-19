@@ -45,6 +45,8 @@ class Directory(NestedBuffer):
         self.parent_buffer = parent_buffer
         self.buffer_offset = buffer_offset
 
+        self.blob = parent_buffer
+
         self._count = None
 
         # a directory must parse itself before it knows its size and can initialize its buffer
@@ -104,15 +106,14 @@ class Directory(NestedBuffer):
             entry = Entry.from_fields(self, self.parent_buffer, entry_fields['type'], entry_fields['size'],
                                       entry_fields['offset'])
 
-            for existing_entry in self.parent_buffer.unique_entries:
+            for existing_entry in self.blob.unique_entries:
                 if entry == existing_entry:
                     existing_entry.references.append(self)
-                    self.entries.append(existing_entry)
 
             if isinstance(entry, PubkeyEntry):
-                self.parent_buffer.pubkeys[entry.key_id] = entry
+                self.blob.pubkeys[entry.key_id] = entry
 
-            self.parent_buffer.unique_entries.add(entry)
+            self.blob.unique_entries.add(entry)
             self.entries.append(entry)
 
     def _update_fletcher(self):
