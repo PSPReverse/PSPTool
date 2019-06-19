@@ -326,8 +326,8 @@ def find_read_accesses(data):
             entry.type
             for entry in all_entries if entry.buffer_size != 0xffffffff  # value is its type
         }, ** {
-            range(directory.header.get_address(), directory.header.get_address() + directory.header.buffer_size):
-            'Directory Header: ' + str(directory.magic, 'ascii')
+            range(directory.get_address(), directory.get_address() + len(directory)):
+            'Directory: ' + str(directory.magic, 'ascii')
             for directory in directories
         }, range(0x20000, 0x20040): 'Firmware Entry Table'
     })
