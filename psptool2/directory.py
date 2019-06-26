@@ -16,7 +16,7 @@
 
 import struct
 
-from .utils import NestedBuffer, chunker
+from .utils import NestedBuffer, chunker, fletcher32
 from .entry import Entry, PubkeyEntry
 
 from typing import List
@@ -47,6 +47,7 @@ class Directory(NestedBuffer):
 
         self.blob = parent_buffer
 
+        self.checksum = None
         self._count = None
 
         # a directory must parse itself before it knows its size and can initialize its buffer
@@ -80,7 +81,7 @@ class Directory(NestedBuffer):
 
         # update binary representation
         self.header[8:12] = struct.pack('<I', self.count)
-        self._update_fletcher()
+        self.update_checksum()
 
     def _parse_header(self):
         # ugly to do this manually, but we do not know our size yet
@@ -92,7 +93,7 @@ class Directory(NestedBuffer):
                                  buffer_offset=self._HEADER_SIZES[self.magic])
 
         self.buffer_size = len(self.header) + len(self.body)
-        self.checksum = self.header[4:8]
+        self.checksum = NestedBuffer(self, 4, 4)
 
     def _parse_entries(self):
         for entry_bytes in self.body.get_chunks(self._entry_size):
@@ -116,9 +117,9 @@ class Directory(NestedBuffer):
             self.blob.unique_entries.add(entry)
             self.entries.append(entry)
 
-    def _update_fletcher(self):
-        # todo: implement
-        pass
+    def update_checksum(self):
+        data = self[0x8:]  # checksum is calculated from after the checksum field in the header
+        self.checksum.set_bytes(0, 4, fletcher32(data))
 
     def update_entry_fields(self, entry: Entry, type_, size, offset):
         entry_index = None
@@ -134,4 +135,4 @@ class Directory(NestedBuffer):
         entry_bytes = b''.join([struct.pack('<I', value) for value in [type_, size, offset]])
         self.body.set_bytes(self._ENTRY_SIZES[self.magic] * entry_index, 4 * 3, entry_bytes)
 
-        self._update_fletcher()
+        self.update_checksum()

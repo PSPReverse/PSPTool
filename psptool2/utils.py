@@ -18,6 +18,7 @@ import sys
 import argparse
 import math
 import zlib
+import struct
 
 
 class ObligingArgumentParser(argparse.ArgumentParser):
@@ -191,3 +192,24 @@ def zlib_decompress(s):
         return uncompressed + decompressed
 
     return s
+
+
+def fletcher32(s):
+    c0 = 0xFFFF
+    c1 = 0xFFFF
+
+    for index, byte_pair in enumerate(chunker(s, 2)):  # fletcher is calculated over 16bit words, i.e. 2 bytes
+        byte_pair_int = struct.unpack('<H', byte_pair)[0]
+
+        c0 += byte_pair_int
+        c1 += c0
+
+        if index % 360 == 0:
+            c0 = (c0 & 0xFFFF) + (c0 >> 16)
+            c1 = (c1 & 0xFFFF) + (c1 >> 16)
+
+    c0 = (c0 & 0xFFFF) + (c0 >> 16)
+    c1 = (c1 & 0xFFFF) + (c1 >> 16)
+
+    checksum = (c1 << 16) | c0
+    return struct.pack('<I', checksum)
