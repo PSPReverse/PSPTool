@@ -10,6 +10,11 @@ setup(
     author='Christian Werling',
     author_email='cwerling@posteo.de',
     packages=['psptool2'],
-    scripts=['bin/psptool', 'bin/psptool2', 'bin/psptrace'],
+    entry_points={
+        'console_scripts': [
+            'psptool2 = psptool2.__main__:main'
+        ]
+    },
+    scripts=['bin/psptool', 'bin/psptrace'],
     install_requires=['cryptography', 'prettytable'],
 )

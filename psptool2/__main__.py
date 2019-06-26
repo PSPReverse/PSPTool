@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-
 # PSPTool - Display, extract and manipulate PSP firmware inside UEFI images
 # Copyright (C) 2019 Christian Werling, Robert Buhren
 #
@@ -16,12 +14,13 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from psptool2 import PSPTool
-from psptool2.utils import ObligingArgumentParser
+from .psptool import PSPTool
+from .utils import ObligingArgumentParser
 
 from argparse import RawTextHelpFormatter
 
-if __name__ == '__main__':
+
+def main():
     # CLI stuff to create a PSPTool object and interact with it
     parser = ObligingArgumentParser(description='Display, extract, and manipulate AMD PSP firmware inside BIOS ROMs.\n'
                                                 'Note: psptool2 is a rewrite of psptool focussing on usage as a \n'
@@ -35,3 +34,7 @@ if __name__ == '__main__':
 
     psp = PSPTool.from_file(args.file)
     psp.ls()
+
+
+if __name__ == '__main__':
+    main()
