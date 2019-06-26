@@ -19,7 +19,7 @@ import struct
 
 from typing import List
 
-from .utils import print_error_and_exit, NestedBuffer, print_warning, chunker
+from .utils import NestedBuffer, chunker
 from .firmware import Firmware
 from .directory import Directory
 from .entry import Entry

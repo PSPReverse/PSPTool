@@ -25,7 +25,6 @@ from .utils import zlib_decompress
 
 from binascii import hexlify
 from base64 import b64encode
-from hashlib import md5
 
 from cryptography.hazmat.primitives.serialization import load_der_public_key
 from cryptography.hazmat.backends import default_backend
@@ -45,14 +44,35 @@ class Entry(NestedBuffer):
         0x06: 'BIOS_RTM_FIRMWARE',
         0x07: 'BIOS_RTM_SIGNATURE',
         0x08: 'SMU_OFFCHIP_FW',
-        0x09: 'AMD_SEC_DBG_PUBLIC_KEY',
+        0x09: 'SEC_DBG_PUBLIC_KEY',
         0x0A: 'OEM_PSP_FW_PUBLIC_KEY',
-        0x0B: 'AMD_SOFT_FUSE_CHAIN_01',
+        0x0B: 'SOFT_FUSE_CHAIN_01',
         0x0C: 'PSP_BOOT_TIME_TRUSTLETS',
         0x0D: 'PSP_BOOT_TIME_TRUSTLETS_KEY',
         0x10: 'PSP_AGESA_RESUME_FW',
         0x12: 'SMU_OFF_CHIP_FW_2',
+        0x13: 'DEBUG_UNLOCK',
         0x1A: 'PSP_S3_NV_DATA',
+        0x21: 'WRAPPED_IKEK',
+        0x22: 'TOKEN_UNLOCK',
+        0x24: 'SEC_GASKET',
+        0x25: 'MP2_FW',
+        0x28: 'DRIVER_ENTRIES',
+        0x2D: 'S0I3_DRIVER',
+        0x30: 'ABL0',
+        0x31: 'ABL1',
+        0x32: 'ABL2',
+        0x33: 'ABL3',
+        0x34: 'ABL4',
+        0x35: 'ABL5',
+        0x36: 'ABL6',
+        0x37: 'ABL7',
+        0x3A: 'FW_PSP_WHITELIST',
+        # 0x40: 'FW_L2_PTR',
+        0x41: 'FW_IMC',
+        0x42: 'FW_GEC',
+        0x43: 'FW_XHCI',
+        0x44: 'FW_INVALID',
         0x5f: 'FW_PSP_SMUSCS',
         0x60: 'FW_IMC',
         0x61: 'FW_GEC',
@@ -64,7 +84,6 @@ class Entry(NestedBuffer):
         # Entry types named by us
         #   Custom names are denoted by a leading '!' and comments by '~'
         0x14: '!PSP_MCLF_TRUSTLETS',  # very similiar to ~PspTrustlets.bin~ in coreboot blobs
-        0x31: '0x31~ABL_ARM_CODE~',  # a _lot_ of strings and also some ARM code
         0x38: '!PSP_ENCRYPTED_NV_DATA',
         0x40: '!PL2_SECONDARY_DIRECTORY',
         0x70: '!BL2_SECONDARY_DIRECTORY',
