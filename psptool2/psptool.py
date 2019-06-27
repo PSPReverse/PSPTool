@@ -16,21 +16,24 @@
 
 from prettytable import PrettyTable
 from .blob import Blob
+from .utils import print_warning
 
 
 class PSPTool:
     @classmethod
-    def from_file(cls, filename):
+    def from_file(cls, filename, verbose=False):
         with open(filename, 'rb') as f:
             rom_bytes = bytearray(f.read())
 
-        pt = PSPTool(rom_bytes)
+        pt = PSPTool(rom_bytes, verbose=verbose)
         pt.filename = filename
 
         return pt
 
-    def __init__(self, rom_bytes):
-        self.blob = Blob(rom_bytes, len(rom_bytes))
+    def __init__(self, rom_bytes, verbose=False):
+        self.print_warning = print_warning if verbose else lambda *args, **kwargs: None
+
+        self.blob = Blob(rom_bytes, len(rom_bytes), self)
         self.filename = None
 
     def __repr__(self):

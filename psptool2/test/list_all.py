@@ -16,7 +16,8 @@
 
 import os
 
-from .. import PSPTool, Blob
+from .. import PSPTool
+from ..blob import Blob
 
 path = 'psptool2/test/latest-ryzen-june-2019'
 
@@ -28,7 +29,7 @@ if __name__ == '__main__':
             filename = os.path.join(subdir, file)
 
             try:
-                psp = PSPTool.from_file(f'{filename}')
+                psp = PSPTool.from_file(filename)
                 print(psp)
                 psp.ls()
 

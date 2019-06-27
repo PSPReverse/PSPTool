@@ -25,6 +25,7 @@ from .utils import zlib_decompress
 
 from binascii import hexlify
 from base64 import b64encode
+from math import ceil
 
 from cryptography.hazmat.primitives.serialization import load_der_public_key
 from cryptography.hazmat.backends import default_backend
@@ -34,6 +35,8 @@ from cryptography.exceptions import InvalidSignature
 
 
 class Entry(NestedBuffer):
+    ENTRY_ALIGNMENT = 0x100
+
     DIRECTORY_ENTRY_TYPES = {
         0x00: 'AMD_PUBLIC_KEY',
         0x01: 'PSP_FW_BOOT_LOADER',
@@ -167,9 +170,9 @@ class Entry(NestedBuffer):
         current_address = self.get_address()
         move_offset = new_address - current_address
         self.buffer_offset += move_offset
-        self.buffer_size = size
+        self.buffer_size = int(ceil(size / self.ENTRY_ALIGNMENT)) * self.ENTRY_ALIGNMENT
 
-        # update all directories' header that point to this entry
+        # update all directories' headers that point to this entry
         for directory in self.references:
             directory.update_entry_fields(self, self.type, self.buffer_size, self.buffer_offset)
 
@@ -308,14 +311,14 @@ class HeaderEntry(Entry):
         try:
             pubkey: PubkeyEntry = self.blob.pubkeys[self.signature_fingerprint]
         except KeyError:
-            print_warning(f'Corresponding public key ({self.signature_fingerprint[:4]}) not found. Signature '
-                          f'verification failed.')
+            self.blob.psptool.print_warning(f'Corresponding public key ({self.signature_fingerprint[:4]}) not found. '
+                                            f'Signature verification failed.')
             return False
 
         signature_size = len(pubkey.modulus)
 
         if signature_size != 0x100:
-            print_warning('Signatures of other key length than 2048 bit are unsupported.')
+            self.blob.psptool.print_warning('Signatures of other key length than 2048 bit are unsupported.')
             return False
 
         signed_data = self.header.get_bytes() + self.get_decompressed_body()
