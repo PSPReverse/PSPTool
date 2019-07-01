@@ -121,7 +121,7 @@ The `psptool2` Python package is a rewrite of the original PSPTool and does not 
 
 # PSPTrace
 
-PSPTrace can be used to **correlate an SPI capture** of a **boot procedure** recorded with a Saleae Logic analyzer to the **PSP firmware** of a UEFI image. SPI captures must be exported from the Saleae Logic software via *Analyzers > SPI > Export as text/csv file*.
+PSPTrace can be used to **correlate an SPI capture** of a **boot procedure** recorded with a Saleae Logic analyzer to the **PSP firmware** of a UEFI image. SPI captures must be exported from the Saleae Logic software via *Analyzers > SPI > Export as text/csv file*. Please make sure you sampled with an appropriate sample rate and the SPI analyzer is set to `Hex`.
 
 It is installed along with PSPTool (see installation instructions above) and only provides a command line interface.
 
