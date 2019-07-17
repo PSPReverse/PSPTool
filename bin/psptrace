@@ -206,6 +206,26 @@ WINBOND_INSTRUCTIONS = {
         'size': 1,
         'expects_data': False
     },
+    0xEB: {
+        'name': 'Fast Read Quad I/O',
+        'size': 4,
+        'expects_data': True
+    },
+    0xE7: {
+        'name': 'Word Read Quad I/O',
+        'size': 4,
+        'expects_data': True
+    },
+    0xE3: {
+        'name': 'Octal Word Read Quad I/O',
+        'size': 4,
+        'expects_data': True
+    },
+    0x94: {
+        'name': 'Mftr./Device ID Quad I/O',
+        'size': 4,
+        'expects_data': True
+    },
 }
 
 
@@ -264,27 +284,47 @@ def get_database(csvfile):
 
     print('Info: Creating database in %s ...' % database_file)
 
-    data = {
-        'raw': {
-            'time': [],
-            'packet_id': [],
-            'mosi': [],
-            # 'miso': []
-        },
-        'read_accesses': None,
-    }
-
     with open(csvfile, newline='') as csvfile:
         reader = csv.DictReader(csvfile, delimiter=',')
 
-        for row in reader:
-            try:
-                data['raw']['time'].append(float(row['Time [s]']))
-                data['raw']['packet_id'].append(int(row['Packet ID']))
-                data['raw']['mosi'].append(int(row['MOSI'], 16))
-                #data['raw']['miso'].append(int(row['MISO'], 16))
-            except ValueError:
-                pass
+        # Case 1: This CSV export comes from the standard Saleae SPI analyzer
+        if reader.fieldnames == ['Time [s]', 'Packet ID' , 'MOSI' , 'MISO'] or \
+            reader.fieldnames == ['Time [s]', 'Packet ID' , 'MOSI']:
+
+            data = {
+                'raw': {
+                    'time': [],
+                    'packet_id': [],
+                    'mosi': []
+                },
+                'read_accesses': None,
+            }
+
+            for row in reader:
+                try:
+                    data['raw']['time'].append(float(row['Time [s]']))
+                    data['raw']['packet_id'].append(int(row['Packet ID']))
+                    data['raw']['mosi'].append(int(row['MOSI'], 16))
+                    #data['raw']['miso'].append(int(row['MISO'], 16))
+                except ValueError:
+                    pass
+
+        # Case 2: This CSV export comes from the Quad SPI analyzer at https://github.com/dedicatedcomputing/saleae_qspi
+        elif reader.fieldnames == ['Time [s]', 'Value']:
+            data = {
+                'raw': {
+                    'time': [],
+                    'value': []
+                },
+                'read_accesses': None,
+            }
+
+            for row in reader:
+                try:
+                    data['raw']['time'].append(float(row['Time [s]']))
+                    data['raw']['value'].append(int(row['Value'], 16))
+                except ValueError:
+                    pass
 
     # convert timestamp from s to ns
     data['raw']['time'] = [int(t * 10 ** 9) for t in data['raw']['time']]
@@ -332,67 +372,133 @@ def find_read_accesses(data):
         }, range(0x20000, 0x20040): 'Firmware Entry Table'
     })
 
+    last_start_time = 0
     last_end_time = 0
     unparsable_instructions = {
         instr['name']: 0 for instr in WINBOND_INSTRUCTIONS.values()
     }
     invalid_instructions = {}
     index = 0
+    last_index = 0
     instr_index = 0
 
-    while index < len(data['mosi']):
-        instr = data['mosi'][index]
+    # Case 1: This CSV export comes from the standard Saleae SPI analyzer
+    if 'mosi' in data:
+        while index < len(data['mosi']):
+            instr = data['mosi'][index]
 
-        if instr == 0x03 or instr == 0x0b:  # i.e. instruction 'Read data' or 'Fast Read'
-            instr_size = WINBOND_INSTRUCTIONS[instr]['size']
-            data_bytes = count_data_bytes(index + instr_size, data['mosi'])
-
-            start_time = data['time'][index]
-            end_time = data['time'][index + data_bytes]
-            duration = end_time - start_time
-            latency = start_time - last_end_time
-
-            address = int.from_bytes(bytes(data['mosi'][index + 1:index + 4]), byteorder='big')
-            size = data_bytes
-            type_ = type_at_address_range[address]
-
-            read_accesses[start_time] = {
-                'instr_index':  instr_index,
-                'start_time':   start_time,
-                'end_time':     end_time,
-                'duration':     duration,
-                'latency':      latency,
-                'address':         address,
-                'size':         size,
-                'type':         type_,
-                'info':         []
-            }
-
-            # skip forward
-            last_end_time = end_time
-            index += WINBOND_INSTRUCTIONS[instr]['size'] + data_bytes
-            instr_index += 1
-
-        elif instr in WINBOND_INSTRUCTIONS:  # i.e. unparsable instructions
-            unparsable_instructions[WINBOND_INSTRUCTIONS[instr]['name']] += 1
-
-            data_bytes = 0
-            if WINBOND_INSTRUCTIONS[instr]['expects_data']:
+            if instr == 0x03 or instr == 0x0b:  # i.e. instruction 'Read data' or 'Fast Read'
                 instr_size = WINBOND_INSTRUCTIONS[instr]['size']
                 data_bytes = count_data_bytes(index + instr_size, data['mosi'])
 
-            last_end_time = end_time
-            index += WINBOND_INSTRUCTIONS[instr]['size'] + data_bytes
-            instr_index += 1
+                start_time = data['time'][index]
+                end_time = data['time'][index + data_bytes]
+                duration = end_time - start_time
+                latency = start_time - last_end_time
 
-        else:  # i.e. unknown/invalid instructions
-            if instr in invalid_instructions:
-                invalid_instructions[instr] += 1
+                address = int.from_bytes(bytes(data['mosi'][index + 1:index + 4]), byteorder='big')
+                size = data_bytes
+                type_ = type_at_address_range[address]
+
+                read_accesses[start_time] = {
+                    'instr_index':  instr_index,
+                    'start_time':   start_time,
+                    'end_time':     end_time,
+                    'duration':     duration,
+                    'latency':      latency,
+                    'address':      address,
+                    'size':         size,
+                    'type':         type_,
+                    'info':         []
+                }
+
+                # skip forward
+                last_end_time = end_time
+                index += WINBOND_INSTRUCTIONS[instr]['size'] + data_bytes
+                instr_index += 1
+
+            elif instr in WINBOND_INSTRUCTIONS:  # i.e. unparsable instructions
+                unparsable_instructions[WINBOND_INSTRUCTIONS[instr]['name']] += 1
+
+                data_bytes = 0
+                if WINBOND_INSTRUCTIONS[instr]['expects_data']:
+                    instr_size = WINBOND_INSTRUCTIONS[instr]['size']
+                    data_bytes = count_data_bytes(index + instr_size, data['mosi'])
+
+                last_end_time = end_time
+                index += WINBOND_INSTRUCTIONS[instr]['size'] + data_bytes
+                instr_index += 1
+
+            else:  # i.e. unknown/invalid instructions
+                if instr in invalid_instructions:
+                    invalid_instructions[instr] += 1
+                else:
+                    invalid_instructions[instr] = 0
+
+                index += 1  # we assume an instr_size of 1 and no return data
+                instr_index += 1
+
+    # Case 2: This CSV export comes from the Quad SPI analyzer at https://github.com/dedicatedcomputing/saleae_qspi
+    elif 'value' in data:
+        while index < len(data['value']) - 1:
+            value = data['value'][index]
+            next_value = data['value'][index + 1]
+
+            if value in [0x03, 0x0B, 0xEB, 0xE7, 0xE3] and next_value > 0xFF:  # normal and Quad IO Read commands
+                    address = next_value
+
+                    start_time = data['time'][index]
+
+                    type_ = type_at_address_range[address]
+
+                    if instr_index > 0:
+                        # set the read size of the previous read access based on the number of non-instruction values
+                        #  before and deduct the instruction and address packets
+                        read_accesses[last_start_time]['size'] = index - last_index - 2
+                        # todo: identify dummy cycles
+                        previous_start_time = read_accesses[last_start_time]['start_time']
+                        previous_last_end_time = read_accesses[last_start_time]['last_end_time']
+
+                        previous_end_time = data['time'][index - 1]
+                        previous_duration = previous_end_time - previous_start_time
+                        previous_latency = previous_start_time - previous_last_end_time
+
+                        read_accesses[last_start_time]['end_time'] = previous_end_time
+                        read_accesses[last_start_time]['duration'] = previous_duration
+                        read_accesses[last_start_time]['latency'] = previous_latency
+
+                    read_accesses[start_time] = {
+                        'instr_index': instr_index,
+                        'start_time': start_time,
+                        'last_end_time': last_end_time,
+                        'address': address,
+                        'type': type_,
+                        'info': ['QSPI'] if value in [0xEB, 0xE7, 0xE3] else []
+                    }
+
+                    # skip forward
+                    last_start_time = start_time
+                    last_end_time = previous_end_time if instr_index > 0 else 0
+                    last_index = index
+                    index += 2  # one address packet and at least one dummy packet (it seems)
+                    instr_index += 1
             else:
-                invalid_instructions[instr] = 0
+                index += 1
 
-            index += 1  # we assume an instr_size of 1 and no return data
-            instr_index += 1
+        # set the read size of the previous read access based on the number of non-instruction values
+        #  before and deduct the instruction and address packets
+        read_accesses[last_start_time]['size'] = index - last_index - 2
+        # todo: identify dummy cycles
+        previous_start_time = read_accesses[last_start_time]['start_time']
+        previous_last_end_time = read_accesses[last_start_time]['last_end_time']
+
+        previous_end_time = data['time'][index - 1]
+        previous_duration = previous_end_time - previous_start_time
+        previous_latency = previous_start_time - previous_last_end_time
+
+        read_accesses[last_start_time]['end_time'] = previous_end_time
+        read_accesses[last_start_time]['duration'] = previous_duration
+        read_accesses[last_start_time]['latency'] = previous_latency
 
     return read_accesses
 
