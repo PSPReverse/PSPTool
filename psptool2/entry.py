@@ -102,6 +102,9 @@ class Entry(NestedBuffer):
 
     @classmethod
     def from_fields(cls, parent_directory, parent_buffer, type_, size, offset):
+        if type_ in [0x0B, 0x30062, 0x40, 0x70]:  # i.e. SOFT_FUSE_CHAIN_01, UEFI-IMAGE or secondary dir links
+            size = 0
+
         try:
             # Option 1: it's a PubkeyEntry
             new_entry = PubkeyEntry(parent_directory, parent_buffer, type_, size, buffer_offset=offset)
@@ -152,7 +155,7 @@ class Entry(NestedBuffer):
         if self.type in self.DIRECTORY_ENTRY_TYPES:
             return self.DIRECTORY_ENTRY_TYPES[self.type]
         else:
-            return ''
+            return hex(self.type)
 
     def get_readable_version(self):
         return ''
@@ -254,6 +257,7 @@ class HeaderEntry(Entry):
         self.unknown_bool = struct.unpack('<I', self.header[0x7c:0x80])[0]
         self.unknown_fingerprint2 = hexlify(self.header[0x80:0x90])
 
+        assert(self.size_packed <= self.buffer_size)
         assert(self.compressed in [0, 1])
         assert(self.encrypted in [0, 1])
         assert(self.get_readable_version() not in ['0.0.0.0', 'FF.FF.FF.FF'])
@@ -294,6 +298,9 @@ class HeaderEntry(Entry):
 
     def get_readable_signed_by(self):
         return str(self.signature_fingerprint, encoding='ascii').upper()[:4]
+
+    def get_decompressed(self) -> bytes:
+        return self.header.get_bytes() + self.get_decompressed_body()
 
     def get_decompressed_body(self) -> bytes:
         if not self.compressed:
