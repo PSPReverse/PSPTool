@@ -19,7 +19,6 @@ import struct
 
 from .utils import NestedBuffer
 from .utils import shannon
-from .utils import print_warning
 from .utils import chunker
 from .utils import zlib_decompress
 
@@ -85,7 +84,7 @@ class Entry(NestedBuffer):
         0x118: 'PSP_SMU_FN_FIRMWARE2',
 
         # Entry types named by us
-        #   Custom names are denoted by a leading '!' and comments by '~'
+        #   Custom names are denoted by a leading '!'
         0x14: '!PSP_MCLF_TRUSTLETS',  # very similiar to ~PspTrustlets.bin~ in coreboot blobs
         0x38: '!PSP_ENCRYPTED_NV_DATA',
         0x40: '!PL2_SECONDARY_DIRECTORY',
@@ -93,7 +92,7 @@ class Entry(NestedBuffer):
         0x15f: '!FW_PSP_SMUSCS_2',  # seems to be a secondary FW_PSP_SMUSCS (see above)
         0x112: '!SMU_OFF_CHIP_FW_3',  # seems to tbe a tertiary SMU image (see above)
         0x39: '!SEV_APP',
-        0x30062: '0x30062~UEFI-IMAGE~'
+        0x30062: '!UEFI-IMAGE'
 
     }
 
@@ -153,7 +152,7 @@ class Entry(NestedBuffer):
 
     def get_readable_type(self):
         if self.type in self.DIRECTORY_ENTRY_TYPES:
-            return self.DIRECTORY_ENTRY_TYPES[self.type]
+            return f'{self.DIRECTORY_ENTRY_TYPES[self.type]}~{hex(self.type)}'
         else:
             return hex(self.type)
 

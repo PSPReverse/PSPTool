@@ -15,6 +15,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import sys
+import os
 
 from .psptool import PSPTool
 from .utils import ObligingArgumentParser, print_warning
@@ -25,15 +26,12 @@ from argparse import RawTextHelpFormatter, SUPPRESS
 
 def main():
     # CLI stuff to create a PSPTool object and interact with it
-    parser = ObligingArgumentParser(description='Display, extract, and manipulate AMD PSP firmware inside BIOS ROMs.\n'
-                                                'Note: psptool2 is a rewrite of psptool focussing on usage as a \n'
-                                                '      Python package. Please use (legacy) \'psptool\' for advanced CLI'
-                                                ' usage.',
+    parser = ObligingArgumentParser(description='Display, extract, and manipulate AMD PSP firmware inside BIOS ROMs.\n',
                                     formatter_class=RawTextHelpFormatter, add_help=False)
 
-    parser.add_argument('file', help='Binary file to be parsed for PSP firmware (usually 16MB in size)')
-    parser.add_argument('-h', '--help', action='help', help='Show this help message and exit.\n\n')
-    parser.add_argument('-v', '--verbose', help='Increase output verbosity', action='store_true')
+    parser.add_argument('file', help='Binary file to be parsed for PSP firmware')
+    parser.add_argument('-h', '--help', action='help', help=SUPPRESS)
+    parser.add_argument('-v', '--verbose', help=SUPPRESS, action='store_true')
 
     parser.add_argument('-d', '--directory-index', help=SUPPRESS, type=int)
     parser.add_argument('-e', '--entry-index', help=SUPPRESS, type=int)
@@ -41,27 +39,32 @@ def main():
     parser.add_argument('-o', '--outfile', help=SUPPRESS)
     parser.add_argument('-u', '--decompress', help=SUPPRESS, action='store_true')
     parser.add_argument('-k', '--pem-key', help=SUPPRESS, action='store_true')
+    parser.add_argument('-n', '--no-duplicates', help=SUPPRESS, action='store_true')
 
     action = parser.add_mutually_exclusive_group(required=False)
 
     action.add_argument('-E', '--entries', help='\n'.join([
         'Default: Parse and display PSP firmware entries.',
+        '[-n]',
+        '',
+        '-n:      list unique entries only ordered by their offset',
         '', '']), action='store_true')
 
     action.add_argument('-X', '--extract-entry', help='\n'.join([
         'Extract one or more PSP firmware entries.',
-        '[-d idx [-e idx]] [-n] [-u] [-k] [-v] [-o outfile]',
+        '[-d idx [-e idx]] [-n] [-u] [-k] [-o outfile]',
         '',
         '-d idx:  specifies directory_index (default: all directories)',
         '-e idx:  specifies entry_index (default: all entries)',
-        '-n:      skip duplicate entries',
+        '-n:      skip duplicate entries and extract unique entries only',
         '-u:      uncompress compressed entries',
         '-k:      convert pubkeys into PEM format',
-        '-o file: specifies outfile/outdir (default: stdout/$PWD)',
+        '-o file: specifies outfile/outdir (default: stdout/{file}_extracted)',
         '', '']), action='store_true')
 
     action.add_argument('-R', '--replace-entry', help='\n'.join([
-        'Copy a new entry (including header and signature) into the ROM file and update metadata accordingly.',
+        'Copy a new entry (including header and signature) into the',
+        'ROM file and update metadata accordingly.',
         '-d idx -e idx -s subfile -o outfile',
         '',
         '-d idx:  specifies directory_index',
@@ -92,8 +95,26 @@ def main():
                 else:
                     directories = psp.blob.directories
 
-                for dir_index, directory in enumerate(directories):
-                    for entry_index, entry in enumerate(directory.entries):
+                if args.no_duplicates is False:
+                    for dir_index, directory in enumerate(directories):
+                        for entry_index, entry in enumerate(directory.entries):
+                            if args.decompress and type(entry) is HeaderEntry:
+                                out_bytes = entry.get_decompressed()
+                            elif args.pem_key and type(entry) is PubkeyEntry:
+                                out_bytes = entry.get_pem_encoded()
+                            else:
+                                out_bytes = entry.get_bytes()
+
+                            outdir = args.outfile or f'./{psp.filename}_extracted'
+                            outpath = outdir + '/d%.2d_e%.2d_%s' % (dir_index, entry_index, entry.get_readable_type())
+                            if type(entry) is HeaderEntry:
+                                outpath += f'_{entry.get_readable_version()}'
+
+                            os.makedirs(os.path.dirname(outpath), exist_ok=True)
+                            with open(outpath, 'wb') as f:
+                                f.write(out_bytes)
+                else:  # no_duplicates is True
+                    for entry in psp.blob.unique_entries:
                         if args.decompress and type(entry) is HeaderEntry:
                             out_bytes = entry.get_decompressed()
                         elif args.pem_key and type(entry) is PubkeyEntry:
@@ -101,12 +122,15 @@ def main():
                         else:
                             out_bytes = entry.get_bytes()
 
-                        outdir = args.outfile or '.'
+                        outdir = args.outfile or f'./{psp.filename}_unique_extracted'
+                        outpath = outdir + '/%s' % (entry.get_readable_type())
 
-                        with open(outdir + '/d%.2d_e%.2d_%s' % (dir_index, entry_index, entry.get_readable_type()), 'wb') as f:
+                        if type(entry) is HeaderEntry:
+                            outpath += f'_{entry.get_readable_version()}'
+
+                        os.makedirs(os.path.dirname(outpath), exist_ok=True)
+                        with open(outpath, 'wb') as f:
                             f.write(out_bytes)
-
-                        # todo: no_duplicates
             else:
                 parser.print_help(sys.stderr)
 
@@ -124,7 +148,13 @@ def main():
         else:
             parser.print_help(sys.stderr)
     else:
-        psp.ls()
+        if args.verbose:
+            print(psp.blob.agesa_version)
+
+        if args.no_duplicates:
+            psp.ls_entries(verbose=args.verbose)
+        else:
+            psp.ls(verbose=args.verbose)
 
     # Output handling (stdout or outfile)
     if output is not None:

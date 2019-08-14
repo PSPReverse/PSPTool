@@ -15,6 +15,8 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from prettytable import PrettyTable
+
+from .entry import HeaderEntry
 from .blob import Blob
 from .utils import print_warning
 
@@ -46,7 +48,7 @@ class PSPTool:
         with open(filename, 'wb') as f:
             f.write(self.blob.get_buffer())
 
-    def ls(self):
+    def ls(self, verbose=False):
         for index, directory in enumerate(self.blob.directories):
             t = PrettyTable(['Directory', 'Addr', 'Type', 'Magic', 'Secondary Directory'])
             t.add_row([
@@ -59,20 +61,22 @@ class PSPTool:
 
             print(t)
 
-            self.ls_dir(index)
+            self.ls_dir(index, verbose=verbose)
             print('\n')
 
-    def ls_dir(self, directory_index):
+    def ls_dir(self, directory_index, verbose=False):
         directory = self.blob.directories[directory_index]
-        self.ls_entries(entries=directory.entries)
+        self.ls_entries(entries=directory.entries, verbose=verbose)
 
-    def ls_entries(self, entries=None):
+    def ls_entries(self, entries=None, verbose=False):
         # list all entries of all directories by default (sorted by their address)
         if entries is None:
             entries = sorted(self.blob.unique_entries)
 
-        basic_fields = [' ', 'Entry', 'Address', 'Size', 'Type', 'Type Name', 'Magic', 'Version', 'Info']
-        t = PrettyTable(basic_fields)
+        basic_fields = [' ', 'Entry', 'Address', 'Size', 'Type', 'Magic/ID', 'Version', 'Info']
+        verbose_fields = ['size_signed', 'size_full', 'size_packed']
+
+        t = PrettyTable(basic_fields + verbose_fields)
         t.align = 'r'
 
         for index, entry in enumerate(entries):
@@ -86,16 +90,31 @@ class PSPTool:
             if entry.encrypted:
                 info.append('encrypted')
 
-            t.add_row([
+            all_values = [
                 '',
                 index,
                 hex(entry.get_address()),
                 hex(entry.buffer_size),
-                hex(entry.type),
                 entry.get_readable_type(),
                 entry.get_readable_magic(),
                 entry.get_readable_version(),
                 ', '.join(info)
-            ])
+            ]
 
-        print(t.get_string(fields=basic_fields))
+            if type(entry) is HeaderEntry:
+                all_values += [hex(v) for v in [
+                    entry.size_signed,
+                    entry.size_full,
+                    entry.size_packed
+                ]]
+            else:
+                all_values += (3 * [''])
+
+            t.add_row(all_values)
+
+        fields = basic_fields
+
+        if verbose is True:
+            fields += verbose_fields
+
+        print(t.get_string(fields=fields))

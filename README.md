@@ -18,55 +18,140 @@ sudo python3 setup.py install
 
 ## CLI Usage
 
-PSPTool offers a range of features from the **command line**:
+PSPTool offers a range of features from the **command line**.
+
+**Example 1:** *List all firmware entries of a given BIOS ROM.*
 
 ```
-usage: psptool [-h] [-E | -X | -R | -U] file
+$ psptool2 Lenovo_Thinkpad_T495_r12uj35wd.iso
 
-Display, extract, and manipulate PSP firmware inside UEFI images
++-----------+----------+---------+-------+---------------------+
+| Directory |   Addr   |   Type  | Magic | Secondary Directory |
++-----------+----------+---------+-------+---------------------+
+|     0     | 0x28bb20 | PSP_NEW |  $PSP |       0x138000      |
++-----------+----------+---------+-------+---------------------+
++---+-------+----------+---------+---------------------------------+-------+------------+------------------------------------+
+|   | Entry |  Address |    Size |                            Type | Magic |    Version |                               Info |
++---+-------+----------+---------+---------------------------------+-------+------------+------------------------------------+
+|   |     0 | 0x28bf20 |   0x240 |              AMD_PUBLIC_KEY~0x0 |  60BB |            |                                    |
+|   |     1 | 0x382f20 |  0xc300 |          PSP_FW_BOOT_LOADER~0x1 |  $PS1 |   0.8.2.59 |            signed(60BB), encrypted |
+|   |     2 | 0x28c220 |  0xb300 | PSP_FW_RECOVERY_BOOT_LOADER~0x3 |  $PS1 |   0.8.2.59 |            signed(60BB), encrypted |
+|   |     3 | 0x297520 | 0x22770 |                           0x208 |       |            |                                    |
+|   |     4 | 0x2b9d20 |  0x71b0 |                           0x212 |       |            |                                    |
+|   |     5 | 0x2c0f20 | 0x20830 |       PSP_SMU_FN_FIRMWARE~0x108 |       |            |                                    |
+|   |     6 | 0x2e1820 |  0x5010 |        !SMU_OFF_CHIP_FW_3~0x112 |       |            |                                    |
+|   |     7 | 0x2e6920 |    0x10 |               WRAPPED_IKEK~0x21 |       |            |                                    |
+|   |     8 | 0x2e6b20 |  0x1000 |               TOKEN_UNLOCK~0x22 |       |            |                                    |
+|   |     9 | 0x2e7b20 |  0x1860 |                           0x224 |  $PS1 |   A.2.3.27 |            signed(60BB), encrypted |
+|   |    10 | 0x2e9420 |  0x1760 |                           0x124 |  $PS1 |   A.2.3.1A |            signed(60BB), encrypted |
+|   |    11 | 0x2eac20 |   0xdd0 |                       ABL0~0x30 |  AW0B | 18.12.10.0 | compressed, signed(60BB), verified |
+|   |    12 | 0x2eba20 |  0xcbb0 |                       ABL1~0x31 |  AW1B | 18.12.10.0 | compressed, signed(60BB), verified |
+|   |    13 | 0x2f8620 |  0x8dc0 |                       ABL2~0x32 |  AW2B | 18.12.10.0 | compressed, signed(60BB), verified |
+|   |    14 | 0x301420 |  0xbb90 |                       ABL3~0x33 |  AW3B | 18.12.10.0 | compressed, signed(60BB), verified |
+|   |    15 | 0x30d020 |  0xcca0 |                       ABL4~0x34 |  AW4B | 18.12.10.0 | compressed, signed(60BB), verified |
+|   |    16 | 0x319d20 |  0xc910 |                       ABL5~0x35 |  AW5B | 18.12.10.0 | compressed, signed(60BB), verified |
+|   |    17 | 0x326720 |  0x9ef0 |                       ABL6~0x36 |  AW6B | 18.12.10.0 | compressed, signed(60BB), verified |
+|   |    18 | 0x330620 |  0xc710 |                       ABL7~0x37 |  AW7B | 18.12.10.0 | compressed, signed(60BB), verified |
+|   |    19 | 0x382b20 |     0x0 |   !PL2_SECONDARY_DIRECTORY~0x40 |       |            |                                    |
++---+-------+----------+---------+---------------------------------+-------+------------+------------------------------------+
+[...]
+```
+
+
+
+**Example 2:** *Extract all unique firmware entries from a given BIOS ROM, uncompress compressed entries and convert public keys into PEM format.*
+
+```
+$ psptool2 -Xunk ASUS_PRIME-A320M-A-ASUS-4801.CAP
+ll ASUS_PRIME-A320M-A-ASUS-4801.CAP_unique_extracted/
+[...]
+17007195  64 -rw-r--r--   1 cwerling  staff    32K 14 Aug 15:32 PSP_AGESA_RESUME_FW~0x10
+17007235   8 -rw-r--r--   1 cwerling  staff   451B 14 Aug 15:32 PSP_BOOT_TIME_TRUSTLETS_KEY~0xd
+17007244 224 -rw-r--r--   1 cwerling  staff   112K 14 Aug 15:32 PSP_BOOT_TIME_TRUSTLETS~0xc_0.7.0.1
+17007237  64 -rw-r--r--   1 cwerling  staff    32K 14 Aug 15:32 PSP_FW_BOOT_LOADER~0x1
+17007197 104 -rw-r--r--   1 cwerling  staff    49K 14 Aug 15:32 PSP_FW_BOOT_LOADER~0x1_0.8.0.5E
+17007196 112 -rw-r--r--   1 cwerling  staff    55K 14 Aug 15:32 PSP_FW_BOOT_LOADER~0x1_0.D.0.1A
+17007223  48 -rw-r--r--   1 cwerling  staff    24K 14 Aug 15:32 PSP_FW_RECOVERY_BOOT_LOADER~0x3
+17007224  96 -rw-r--r--   1 cwerling  staff    45K 14 Aug 15:32 PSP_FW_RECOVERY_BOOT_LOADER~0x3_0.8.0.5E
+17007232 288 -rw-r--r--   1 cwerling  staff   144K 14 Aug 15:32 PSP_FW_TRUSTED_OS~0x2
+17007180 128 -rw-r--r--   1 cwerling  staff    61K 14 Aug 15:32 PSP_FW_TRUSTED_OS~0x2_0.8.0.5E
+17007247 128 -rw-r--r--   1 cwerling  staff    60K 14 Aug 15:32 PSP_FW_TRUSTED_OS~0x2_0.D.0.1A
+17007205 256 -rw-r--r--   1 cwerling  staff   128K 14 Aug 15:32 PSP_NV_DATA~0x4
+17007182  24 -rw-r--r--   1 cwerling  staff    12K 14 Aug 15:32 PSP_S3_NV_DATA~0x1a
+17007226 160 -rw-r--r--   1 cwerling  staff    80K 14 Aug 15:32 PSP_SMU_FN_FIRMWARE~0x108
+17007202   8 -rw-r--r--   1 cwerling  staff   451B 14 Aug 15:32 SEC_DBG_PUBLIC_KEY~0x9
+17007216  32 -rw-r--r--   1 cwerling  staff    14K 14 Aug 15:32 SEC_GASKET~0x24_11.3.0.8
+17007206  16 -rw-r--r--   1 cwerling  staff   5,8K 14 Aug 15:32 SEC_GASKET~0x24_A.2.3.27
+17007176 264 -rw-r--r--   1 cwerling  staff   129K 14 Aug 15:32 SMU_OFFCHIP_FW~0x8
+17007217 520 -rw-r--r--   1 cwerling  staff   256K 14 Aug 15:32 SMU_OFFCHIP_FW~0x8_0.2E.16.0
+[...]
+```
+
+
+
+**Example 3**: *Extract the firmware entry from a given BIOS ROM at directory index 1 entry index 8 (`PSP_BOOT_TIME_TRUSTLETS`) and show strings of length 8.*
+
+```
+$ psptool2 -X -d 1 -e 8 MSI_X399_E7B92AMS.130 | strings -n 8
+AMD_TL_UTIL: Hashing the message: %p
+AMD_TL_UTIL: ProcessCmd_Hash(), UTIL_ERR_INVALID_BUFFER, exit
+RSA: Calling tlApiRandomGenerateData
+RSA: Calling DbgUnlockRsaKeyGen
+RSA: Done Calling DbgUnlockRsaKeyGen
+DbgUnlockRsaKeyGen failed
+AMD_TL_UTIL: Deriving AES key
+AMD_TL_UTIL: ProcessCmd_Hmac(), UTIL_ERR_INVALID_BUFFER, exit
+AMD_TL_UTIL: Deriving HMAC key
+HMAC Signature Key for PSP Data saved in DRAM
+AMD_TL_UTIL: Computing HMAC of payload
+AMD_TL_UTIL: running
+AMD_TL_UTIL: invalid TCI
+TCI buffer: %p
+TCI buffer length: %p
+sizeof(tciMessage_t): %p
+AMD_TL_UTIL: waiting for notification
+RSA: Calling generateKeyPair and RSA signing
+RSA: Calling DbgUnlockKeyVerfiy
+AMD_TL_UTIL: Unknown command ID %d, ignore
+AMD_TL_UTIL: notify TLC
+```
+
+
+
+**General usage:**
+
+```
+usage: psptool2 [-E | -X | -R] file
+
+Display, extract, and manipulate AMD PSP firmware inside BIOS ROMs.
 
 positional arguments:
-  file                  Binary file to be parsed for PSP firmware
+  file                 Binary file to be parsed for PSP firmware
 
 optional arguments:
-  -h, --help            Show this help message and exit.
+  -E, --entries        Default: Parse and display PSP firmware entries.
+                       [-n]
 
-  -E, --entries         Default: Parse and display PSP firmware entries.
-                        [-d idx] [-n] [-i] [-v]
+                       -n:      list unique entries only ordered by their offset
 
-                        -d idx:     specifies directory_index (default: all directories)
-                        -n:         hide duplicate entries from listings
-                        -i:         display additional entry header info
-                        -v:         display even more info (AGESA Version, Entropy, MD5)
-                        -t csvfile: only display entries found in the given SPI trace
-                                    (see psptrace for details)
-  -X, --extract-entry   Extract one or more PSP firmware entries.
-                        [-d idx [-e idx]] [-n] [-u] [-k] [-v] [-o outfile]
+  -X, --extract-entry  Extract one or more PSP firmware entries.
+                       [-d idx [-e idx]] [-n] [-u] [-k] [-o outfile]
 
-                        -d idx:  specifies directory_index (default: all directories)
-                        -e idx:  specifies entry_index (default: all entries)
-                        -n:      skip duplicate entries
-                        -u:      uncompress compressed entries
-                        -k:      convert _pubkeys into PEM format
-                        -v:      increase output verbosity
-                        -o file: specifies outfile/outdir (default: stdout/$PWD)
-  -R, --replace-directory-entry
-                        Copy a new entry body into the ROM file and update metadata accordingly.
-                        Note: The given address is assumed to be overwritable (e.g. padding).
-                        -d idx -e idx -b addr [-y] [-s subfile] [-o outfile]
+                       -d idx:  specifies directory_index (default: all directories)
+                       -e idx:  specifies entry_index (default: all entries)
+                       -n:      skip duplicate entries and extract unique entries only
+                       -u:      uncompress compressed entries
+                       -k:      convert pubkeys into PEM format
+                       -o file: specifies outfile/outdir (default: stdout/{file}_extracted)
 
-                        -d idx:  specifies directory_index
-                        -e idx:  specifies entry_index
-                        -b addr: specifies destination address of the new entry
-                        -s file: specifies subfile (i.e. the new entry) (default: stdin)
-                        -o file: specifies outfile (default: stdout)
-  -U, --update-signatures
-                        Re-sign all signatures in the ROM file with a given private key and export
-                        a new ROM file.
-                        -p private_key [-o outfile]
+  -R, --replace-entry  Copy a new entry (including header and signature) into the
+                       ROM file and update metadata accordingly.
+                       -d idx -e idx -s subfile -o outfile
 
-                        -p file:   specifies a path to the private_key in PEM format for re-signing
-                        -o file:   specifies outfile (default: stdout)
+                       -d idx:  specifies directory_index
+                       -e idx:  specifies entry_index
+                       -s file: specifies subfile (i.e. the new entry contents)
+                       -o file: specifies outfile
 ```
 
 ## Python Usage
@@ -112,10 +197,6 @@ b'\x01\x00\x00\x00\x1b\xb9\x87\xc3YIF\x06\xb1t\x94V\x01\xc9\xea[\x1b\xb9\x87\xc3
 > psp.blob.set_bytes(0x60000, 0x1000, my_stuff)
 > psp.to_file('my_modified_bios.bin')
 ```
-
-## Code
-
-The `psptool2` Python package is a rewrite of the original PSPTool and does not yet support the same functionality as PSPTool does. The original PSPTool codebase found in `bin/psptool` is only meant for providing support for the command line interface. It is not subject to further development.
 
 
 
