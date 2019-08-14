@@ -19,7 +19,7 @@ import os
 from .. import PSPTool
 from ..blob import Blob
 
-path = 'psptool2/test/latest-ryzen-june-2019'
+path = 'psptool/test/latest-ryzen-june-2019'
 
 if __name__ == '__main__':
     for subdir, dirs, files in os.walk(path):

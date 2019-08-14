@@ -23,7 +23,7 @@ PSPTool offers a range of features from the **command line**.
 **Example 1:** *List all firmware entries of a given BIOS ROM.*
 
 ```
-$ psptool2 Lenovo_Thinkpad_T495_r12uj35wd.iso
+$ psptool Lenovo_Thinkpad_T495_r12uj35wd.iso
 
 +-----------+----------+---------+-------+---------------------+
 | Directory |   Addr   |   Type  | Magic | Secondary Directory |
@@ -62,7 +62,7 @@ $ psptool2 Lenovo_Thinkpad_T495_r12uj35wd.iso
 **Example 2:** *Extract all unique firmware entries from a given BIOS ROM, uncompress compressed entries and convert public keys into PEM format.*
 
 ```
-$ psptool2 -Xunk ASUS_PRIME-A320M-A-ASUS-4801.CAP
+$ psptool -Xunk ASUS_PRIME-A320M-A-ASUS-4801.CAP
 ll ASUS_PRIME-A320M-A-ASUS-4801.CAP_unique_extracted/
 [...]
 17007195  64 -rw-r--r--   1 cwerling  staff    32K 14 Aug 15:32 PSP_AGESA_RESUME_FW~0x10
@@ -92,7 +92,7 @@ ll ASUS_PRIME-A320M-A-ASUS-4801.CAP_unique_extracted/
 **Example 3**: *Extract the firmware entry from a given BIOS ROM at directory index 1 entry index 8 (`PSP_BOOT_TIME_TRUSTLETS`) and show strings of length 8.*
 
 ```
-$ psptool2 -X -d 1 -e 8 MSI_X399_E7B92AMS.130 | strings -n 8
+$ psptool -X -d 1 -e 8 MSI_X399_E7B92AMS.130 | strings -n 8
 AMD_TL_UTIL: Hashing the message: %p
 AMD_TL_UTIL: ProcessCmd_Hash(), UTIL_ERR_INVALID_BUFFER, exit
 RSA: Calling tlApiRandomGenerateData
@@ -121,7 +121,7 @@ AMD_TL_UTIL: notify TLC
 **General usage:**
 
 ```
-usage: psptool2 [-E | -X | -R] file
+usage: psptool [-E | -X | -R] file
 
 Display, extract, and manipulate AMD PSP firmware inside BIOS ROMs.
 
@@ -159,7 +159,7 @@ optional arguments:
 A rewrite of PSPTool enables its **use as a Python module**, e.g. in an interactive IPython session:
 
 ```
-> from psptool2 import PSPTool
+> from psptool import PSPTool
 > psp = PSPTool.from_file('original_bios.bin')
 > psp.blob.directories
 [Directory(address=0x77000, type=PSP_NEW, count=16),

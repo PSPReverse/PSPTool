@@ -26,8 +26,8 @@ from signal import signal, SIGPIPE, SIG_DFL
 from collections import deque
 from prettytable import PrettyTable
 
-from psptool2 import PSPTool
-from psptool2.entry import Entry
+from psptool import PSPTool
+from psptool.entry import Entry
 
 # from http://www.winbond.com.tw/resource-files/w25q128jv%20spi%20revb%2011082016.pdf
 WINBOND_INSTRUCTIONS = {

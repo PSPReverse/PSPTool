@@ -46,7 +46,7 @@ def get_arch(agesa):
         return 'Zen2'
 
 
-path = 'psptool2/test/latest-ryzen-june-2019'
+path = 'psptool/test/latest-ryzen-june-2019'
 
 if __name__ == '__main__':
     all_bootloaders = []
