@@ -19,7 +19,7 @@ import struct
 
 from typing import List
 
-from .utils import NestedBuffer, chunker
+from .utils import NestedBuffer, chunker, print_warning
 from .firmware import Firmware
 from .directory import Directory
 from .entry import Entry
@@ -128,8 +128,11 @@ class Blob(NestedBuffer):
                     psp_dir_two_addr = struct.unpack('<I', directory[14*4:14*4+4])[0] & 0x00FFFFFF
 
                     for address in [psp_dir_one_addr, psp_dir_two_addr]:
-                        directory = Directory(self, address, firmware_type)
-                        self.directories.append(directory)
+                        try:
+                            directory = Directory(self, address, firmware_type)
+                            self.directories.append(directory)
+                        except:
+                            print_warning(f'Unable to parse directory at {hex(address)}.')
 
                         # if this Directory points to a secondary directory: add it, too
                         if directory.secondary_directory_address is not None:
