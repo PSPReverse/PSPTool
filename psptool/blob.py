@@ -133,6 +133,7 @@ class Blob(NestedBuffer):
                             self.directories.append(directory)
                         except:
                             print_warning(f'Unable to parse directory at {hex(address)}.')
+                            continue
 
                         # if this Directory points to a secondary directory: add it, too
                         if directory.secondary_directory_address is not None:
