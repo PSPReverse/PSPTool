@@ -156,7 +156,7 @@ optional arguments:
 
 ## Python Usage
 
-A rewrite of PSPTool enables its **use as a Python module**, e.g. in an interactive IPython session:
+PSPTool can be **used as a Python module**, e.g. in an interactive IPython session:
 
 ```
 > from psptool import PSPTool
@@ -239,40 +239,42 @@ After recording the boot procedure of a Supermicro server system with an AMD Epy
 ```
 $ psptrace -o spi_trace.txt flash.bin
 
-Info: Found existing database in 50 MHz, 6 B Samples [2].txt.pickle.
-Info: Loading database ...
-Info: Loaded a capture of 14028942 rows.
+Info: Creating database in spi_trace.txt.pickle ...
+Info: Parsed and stored a database of 14028942 rows.
 +---------+---------------+----------+-----------------------------+------+
 |   No.   | Lowest access |  Range   |             Type            | Info |
 +---------+---------------+----------+-----------------------------+------+
-|    0    |    0xe20000   | 0x180007 |     0x30062~UEFI-IMAGE~     |      |
-|    10   |    0x020000   | 0xc00007 |         Unknown area        |      |
-|    33   |    0x077000   | 0x00012a |         Header: $PSP        |      |
-|    70   |    0x077000   | 0x000100 |         Header: $PSP        | CCP  |
+|    0    |    0x820000   | 0x780007 |         Unknown area        |      |
+|    22   |    0x020000   | 0x00001c |     Firmware Entry Table    |      |
+|    33   |    0x077000   | 0x00012a |       Directory: $PSP       |      |
+|    70   |    0x077000   | 0x000100 |       Directory: $PSP       | CCP  |
 |   107   |    0x077400   | 0x000240 |        AMD_PUBLIC_KEY       | CCP  |
 |   177   |    0x149400   | 0x00d780 |      PSP_FW_BOOT_LOADER     | CCP  |
 |         |               |          |                             |      |
 |         |               |          |      ~ 3410 µs delay ~      |      |
 |         |               |          |                             |      |
-|   7084  |    0x149000   | 0x000180 |   !PL2_SECONDARY_DIRECTORY  | CCP  |
+|   7084  |    0x149000   | 0x000180 |       Directory: $PL2       | CCP  |
 |   7090  |    0x000000   | 0x020046 |         Unknown area        |      |
+|   7091  |    0x020000   | 0x000024 |     Firmware Entry Table    |      |
 |         |               |          |                             |      |
 |         |               |          |       ~ 66 µs delay ~       |      |
 |         |               |          |                             |      |
-|   7095  |    0x117000   | 0x000160 |         Header: $BHD        |      |
-|   7096  |    0x149000   | 0x000152 |   !PL2_SECONDARY_DIRECTORY  |      |
+|   7095  |    0x117000   | 0x000160 |       Directory: $BHD       |      |
+|   7096  |    0x149000   | 0x000152 |       Directory: $PL2       |      |
 |   7554  |    0x000000   | 0x117280 |         Unknown area        |      |
-|   7859  |    0x249000   | 0x000400 |   !BL2_SECONDARY_DIRECTORY  | CCP  |
-|   7880  |    0x1170c0   | 0x000080 |         Header: $BHD        | CCP  |
-|   8017  |    0x249010   | 0x00019a |   !BL2_SECONDARY_DIRECTORY  |      |
-|   8560  |    0x17c100   | 0x001932 |             0x13            |      |
-|   8939  |    0x17c200   | 0x001800 |             0x13            | CCP  |
-|  10144  |    0x177a00   | 0x0001c0 |    AMD_SEC_DBG_PUBLIC_KEY   |      |
-|  10576  |    0x177bc0   | 0x000180 |    AMD_SEC_DBG_PUBLIC_KEY   | CCP  |
+|   7581  |    0x020000   | 0x000022 |     Firmware Entry Table    |      |
+|   7859  |    0x249000   | 0x0001c0 |       Directory: $BL2       | CCP  |
+|   7880  |    0x1170c0   | 0x000080 |       Directory: $BHD       | CCP  |
+|   7909  |    0x2491c0   | 0x000240 |         Unknown area        | CCP  |
+|   8017  |    0x249010   | 0x00019a |       Directory: $BL2       |      |
+|   8560  |    0x17c100   | 0x001932 |         DEBUG_UNLOCK        |      |
+|   8939  |    0x17c200   | 0x001800 |         DEBUG_UNLOCK        | CCP  |
+|  10144  |    0x177a00   | 0x0001c0 |      SEC_DBG_PUBLIC_KEY     |      |
+|  10576  |    0x177bc0   | 0x000180 |      SEC_DBG_PUBLIC_KEY     | CCP  |
 |         |               |          |                             |      |
 |         |               |          |       ~ 178 µs delay ~      |      |
 |         |               |          |                             |      |
-|  10582  |    0x17e000   | 0x000080 |             0x22            | CCP  |
+|  10582  |    0x17e000   | 0x000080 |         TOKEN_UNLOCK        | CCP  |
 
 [...]
 ```
