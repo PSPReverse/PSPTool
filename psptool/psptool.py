@@ -74,7 +74,7 @@ class PSPTool:
             entries = sorted(self.blob.unique_entries)
 
         basic_fields = [' ', 'Entry', 'Address', 'Size', 'Type', 'Magic/ID', 'Version', 'Info']
-        verbose_fields = ['size_signed', 'size_full', 'size_packed']
+        verbose_fields = ['MD5', 'size_signed', 'size_full', 'size_packed']
 
         t = PrettyTable(basic_fields + verbose_fields)
         t.align = 'r'
@@ -98,7 +98,8 @@ class PSPTool:
                 entry.get_readable_type(),
                 entry.get_readable_magic(),
                 entry.get_readable_version(),
-                ', '.join(info)
+                ', '.join(info),
+                entry.md5()[:4].upper()
             ]
 
             if type(entry) is HeaderEntry:

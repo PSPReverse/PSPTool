@@ -25,6 +25,7 @@ from .utils import zlib_decompress
 from binascii import hexlify
 from base64 import b64encode
 from math import ceil
+from hashlib import md5
 
 from cryptography.hazmat.primitives.serialization import load_der_public_key
 from cryptography.hazmat.backends import default_backend
@@ -168,6 +169,11 @@ class Entry(NestedBuffer):
     def shannon_entropy(self):
         return shannon(self[:])
 
+    def md5(self):
+        m = md5()
+        m.update(self.get_bytes())
+        return m.hexdigest()
+
     def move_buffer(self, new_address, size):
         current_address = self.get_address()
         move_offset = new_address - current_address
@@ -309,6 +315,11 @@ class HeaderEntry(Entry):
 
     def shannon_entropy(self):
         return shannon(self.body[:])
+
+    def md5(self):
+        m = md5()
+        m.update(self.body.get_bytes())
+        return m.hexdigest()
 
     def verify_signature(self):
         if self.buffer_size == 0:
