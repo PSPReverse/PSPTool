@@ -10,6 +10,14 @@ PSPTool favourably works with UEFI images as obtained through BIOS updates.
 
 ## Installation
 
+You can install PSPTool either through **pip**,
+
+```
+pip install psptool
+```
+
+or from **GitHub**:
+
 ```
 git clone https://github.com/cwerling/psptool
 cd psptool
