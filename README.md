@@ -19,8 +19,8 @@ pip install psptool
 or from **GitHub**:
 
 ```
-git clone https://github.com/cwerling/psptool
-cd psptool
+git clone https://github.com/PSPReverse/PSPTool
+cd PSPTool
 sudo python3 setup.py install
 ```
 
