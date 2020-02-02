@@ -101,8 +101,12 @@ class Directory(NestedBuffer):
             for key, word in zip(self.ENTRY_FIELDS, chunker(entry_bytes, 4)):
                 entry_fields[key] = struct.unpack('<I', word)[0]
 
-            # addresses are all starting at 0xff000000, but we just want everything from there
+            # ROMs will be mapped into memory to fit the very end of the 32 bit memory
+            #  -> most ROMs are 16 MB in size, so addresses are starting at 0xFF000000
             entry_fields['offset'] &= 0x00FFFFFF
+            #  -> some ROMs are 8 MB in size, so addresses are starting at 0xFF800000
+            if len(self.blob) == 0x800000:
+                entry_fields['offset'] &= 0x7FFFFF
 
             entry = Entry.from_fields(self, self.parent_buffer, entry_fields['type'], entry_fields['size'],
                                       entry_fields['offset'])

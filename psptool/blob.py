@@ -105,45 +105,53 @@ class Blob(NestedBuffer):
 
         for index, entry in enumerate(entries):
             firmware_type = self._FIRMWARE_ENTRY_TYPES[index] if index < len(self._FIRMWARE_ENTRY_TYPES) else 'unknown'
-            address = struct.unpack('<I', entry)[0] & 0x00FFFFFF
+            address = struct.unpack('<I', entry)[0]
+            # invalid entries
+            if address in [0x0, 0xFFFFFFFe]:
+                continue
 
-            # assumption: offset == 0 is an invalid entry
-            if address not in [0x0, 0xfffffe]:
-                directory = self[address:address + 16 * 8]
-                magic = directory[:4]
+            # ROMs will be mapped into memory to fit the very end of the 32 bit memory
+            #  -> most ROMs are 16 MB in size, so addresses are starting at 0xFF000000
+            address &= 0x00FFFFFF
+            #  -> some ROMs are 8 MB in size, so addresses are starting at 0xFF800000
+            if len(self) == 0x800000:
+                address &= 0x7FFFFF
 
-                # either this entry points to a PSP directory directly
-                if magic in [b'$PSP', b'$BHD']:
-                    directory = Directory(self, address, firmware_type)
-                    self.directories.append(directory)
+            directory = self[address:address + 16 * 8]
+            magic = directory[:4]
+
+            # either this entry points to a PSP directory directly ...
+            if magic in [b'$PSP', b'$BHD']:
+                directory = Directory(self, address, firmware_type)
+                self.directories.append(directory)
+
+                # if this Directory points to a secondary directory: add it, too
+                if directory.secondary_directory_address is not None:
+                    secondary_directory = Directory(self, directory.secondary_directory_address, 'secondary')
+                    self.directories.append(secondary_directory)
+
+            # ... or this entry points to a combo-directory (i.e. two directories)
+            elif magic == b'2PSP':
+                psp_dir_one_addr = struct.unpack('<I', directory[10*4:10*4+4])[0] & 0x00FFFFFF
+                psp_dir_two_addr = struct.unpack('<I', directory[14*4:14*4+4])[0] & 0x00FFFFFF
+
+                for address in [psp_dir_one_addr, psp_dir_two_addr]:
+                    try:
+                        directory = Directory(self, address, firmware_type)
+                        self.directories.append(directory)
+                    except:
+                        print_warning(f'Unable to parse directory at {hex(address)}.')
+                        continue
 
                     # if this Directory points to a secondary directory: add it, too
                     if directory.secondary_directory_address is not None:
                         secondary_directory = Directory(self, directory.secondary_directory_address, 'secondary')
                         self.directories.append(secondary_directory)
 
-                # or this entry points to a combo-directory (i.e. two directories)
-                elif magic == b'2PSP':
-                    psp_dir_one_addr = struct.unpack('<I', directory[10*4:10*4+4])[0] & 0x00FFFFFF
-                    psp_dir_two_addr = struct.unpack('<I', directory[14*4:14*4+4])[0] & 0x00FFFFFF
-
-                    for address in [psp_dir_one_addr, psp_dir_two_addr]:
-                        try:
-                            directory = Directory(self, address, firmware_type)
-                            self.directories.append(directory)
-                        except:
-                            print_warning(f'Unable to parse directory at {hex(address)}.')
-                            continue
-
-                        # if this Directory points to a secondary directory: add it, too
-                        if directory.secondary_directory_address is not None:
-                            secondary_directory = Directory(self, directory.secondary_directory_address, 'secondary')
-                            self.directories.append(secondary_directory)
-
-                # or this entry is unparsable and thus a firmware
-                else:
-                    firmware = Firmware(self, address, firmware_type, magic)
-                    self.firmwares.append(firmware)
+            # or this entry is unparsable and thus a firmware
+            else:
+                firmware = Firmware(self, address, firmware_type, magic)
+                self.firmwares.append(firmware)
 
     def get_entries_by_type(self, type_) -> List[Entry]:
         entries = []
