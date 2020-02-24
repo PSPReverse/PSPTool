@@ -128,7 +128,7 @@ class Directory(NestedBuffer):
     def update_entry_fields(self, entry: Entry, type_, size, offset):
         entry_index = None
         for index, my_entry in enumerate(self.entries):
-            if my_entry == entry:
+            if my_entry.type == entry.type:
                 entry_index = index
                 break
 
