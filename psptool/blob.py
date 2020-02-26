@@ -75,7 +75,10 @@ class Blob(NestedBuffer):
         component_name = version_string[9:16]
         version = version_string[16:]
 
-        self.agesa_version = str(b''.join([agesa_magic, b' ', component_name, version]), 'ascii').rstrip('\x00')
+        try:
+            self.agesa_version = str(b''.join([agesa_magic, b' ', component_name, version]), 'ascii').rstrip('\x00')
+        except:
+            self.agesa_version = "UNKNOWN"
 
     def _find_entry_table(self):
         # AA55AA55 is to unspecific, so we require a word of padding before (to be tested)
