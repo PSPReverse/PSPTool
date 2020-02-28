@@ -338,7 +338,7 @@ class HeaderEntry(Entry):
 
     def get_decrypted_body(self) -> bytes:
         if not self.encrypted:
-            return self.body.get_buffer()
+            return self.body.get_bytes()
         else:
             unwrapped_ikek = self.get_unwrapped_ikek()
             assert(unwrapped_ikek != None)
