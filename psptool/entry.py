@@ -21,6 +21,7 @@ from .utils import NestedBuffer
 from .utils import shannon
 from .utils import chunker
 from .utils import zlib_decompress
+from .utils import decrypt
 
 from binascii import hexlify
 from base64 import b64encode
@@ -36,6 +37,12 @@ from cryptography.exceptions import InvalidSignature
 
 class Entry(NestedBuffer):
     ENTRY_ALIGNMENT = 0x100
+
+    UNWRAPPED_IKEK_ZEN_PLUS = b'\x4c\x77\x63\x65\x32\xfe\x4c\x6f\xd6\xb9\xd6\xd7\xb5\x1e\xde\x59'
+    HASH_IKEK_ZEN_PLUS = b'\xe2\x84\xda\xe0\x6e\x58\x01\x04\xfa\x6e\x8e\x6b\x58\x68\x8a\x0c'
+
+    UNWRAPPED_IKEK_ZEN = b'\x49\x1e\x40\x1a\x40\x1e\xc1\xb2\x28\x46\x00\xf0\x99\xfd\xe8\x68'
+    HASH_IKEK_ZEN = b'\x47\x23\xa8\x52\x03\x38\xbd\x2e\xac\x5f\xae\x9c\x2c\xb5\x92\x5b'
 
     DIRECTORY_ENTRY_TYPES = {
         0x00: 'AMD_PUBLIC_KEY',
@@ -270,6 +277,13 @@ class HeaderEntry(Entry):
         # update buffer size with more precise size_packed
         self.buffer_size = self.size_packed
 
+        # Get IV and wrapped KEY from entry header
+        if self.encrypted:
+            self.iv = self.header[0x20:0x30]
+            self.key = self.header[0x80:0x90]
+            assert(self.iv != (b'\x00' * 16))
+            assert(self.key != (b'\x00' * 16))
+
         # Note: This is a heuristic and it would be better to find out by looking at the signing key's modulus size.
         # However, this might not have been parsed at this point.
         signature_size = 0x100                            # Assume a default signature size of 0x100,
@@ -281,6 +295,12 @@ class HeaderEntry(Entry):
 
     def get_readable_version(self):
         return '.'.join([hex(b)[2:].upper() for b in self.version])
+
+    def get_ikek_md5sum(self) -> bytes:
+        ikek = self.parent_buffer.get_entries_by_type(0x21)[0]
+        m = md5()
+        m.update(ikek.get_bytes())
+        return m.digest()
 
     def get_readable_magic(self):
         # if self.magic == b'\x01\x00\x00\x00':
@@ -313,6 +333,32 @@ class HeaderEntry(Entry):
         else:
             return zlib_decompress(self.body.get_bytes())
 
+    def get_decrypted(self) -> bytes:
+        return self.header.get_bytes() + self.get_decrypted_body()
+
+    def get_decrypted_body(self) -> bytes:
+        if not self.encrypted:
+            return self.body.get_buffer()
+        else:
+            unwrapped_ikek = self.get_unwrapped_ikek()
+            assert(unwrapped_ikek != None)
+            return decrypt(self.body.get_bytes(), self.key, unwrapped_ikek, self.iv)
+
+    def get_unwrapped_ikek(self) -> bytes:
+        #TODO: Find out how to identify the correct IKEK.
+        #      For now assume that the zen+ IKEK is correct.
+
+        # if self.get_ikek_md5sum() == self.HASH_IKEK_ZEN:
+        #     return self.UNWRAPPED_IKEK_ZEN
+        # if self.get_ikek_md5sum() == self.HASH_IKEK_ZEN_PLUS:
+        #     return self.UNWRAPPED_IKEK_ZEN_PLUS
+        # else:
+        #     return None
+
+        return self.UNWRAPPED_IKEK_ZEN_PLUS
+
+
+
     def shannon_entropy(self):
         return shannon(self.body[:])
 
@@ -338,7 +384,15 @@ class HeaderEntry(Entry):
             self.blob.psptool.print_warning('Signatures of other key length than 2048 bit are unsupported.')
             return False
 
-        signed_data = self.header.get_bytes() + self.get_decompressed_body()
+        # Note: This does not work if an entry was compressed AND encrypted.
+        # However, we have not yet seen such entry.
+        if self.compressed:
+            signed_data = self.get_decompressed()
+        elif self.encrypted:
+            signed_data = self.get_decrypted()
+        else:
+            signed_data = self.get_bytes()
+
         signature = self.get_bytes(offset=self.buffer_size - signature_size, size=signature_size)
 
         pubkey_der_encoded = pubkey.get_der_encoded()

@@ -20,6 +20,11 @@ import math
 import zlib
 import struct
 
+from hashlib import md5
+
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from cryptography.hazmat.backends import default_backend
+
 
 class ObligingArgumentParser(argparse.ArgumentParser):
     """ Display the full help message whenever there is something wrong with the arguments.
@@ -193,6 +198,31 @@ def zlib_decompress(s):
 
     return s
 
+def decrypt_ecb(data,key):
+    """ Decrypts 'data' with 'key' using AES-128 in ECB mode.
+    Return the decrypted data. """
+    backend = default_backend()
+
+    cipher_ecb = Cipher(algorithms.AES(key), modes.ECB(), backend=backend)
+    ecb_decryptor = cipher_ecb.decryptor()
+    return ecb_decryptor.update(data) + ecb_decryptor.finalize()
+
+def decrypt_cbd(data,iv,key):
+    """ Decrypts 'data' with 'key' using AES-128 in CBC mode.
+    Returns the decrypted data. """
+
+    backend = default_backend()
+    cipher_cbc = Cipher(algorithms.AES(key), modes.CBC(iv), backend=backend)
+    cbc_decryptor= cipher_cbc.decryptor()
+    return cbc_decryptor.update(data) + cbc_decryptor.finalize()
+
+def decrypt(data,entry_key,unwrapped_ikek,iv):
+    """ Decrypts an entry. The entry key is stored at offset 0x80 of the respective header,
+    the IV is stored at offset 0x20. An already unwrapped IKEK is required to perform this
+    operation. """
+    unwrapped_entry_key = decrypt_ecb(entry_key,unwrapped_ikek)
+
+    return decrypt_cbd(data, iv, unwrapped_entry_key)
 
 def fletcher32(s):
     c0 = 0xFFFF
