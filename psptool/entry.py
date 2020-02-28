@@ -22,6 +22,7 @@ from .utils import shannon
 from .utils import chunker
 from .utils import zlib_decompress
 from .utils import decrypt
+from .utils import print_warning
 
 from binascii import hexlify
 from base64 import b64encode
@@ -33,6 +34,8 @@ from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.asymmetric import padding
 from cryptography.hazmat.primitives import hashes
 from cryptography.exceptions import InvalidSignature
+
+from IPython import embed
 
 
 class Entry(NestedBuffer):
@@ -331,7 +334,11 @@ class HeaderEntry(Entry):
         if not self.compressed:
             return self.body.get_bytes()
         else:
-            return zlib_decompress(self.body.get_bytes())
+            try:
+                return zlib_decompress(self.body.get_bytes())
+            except:
+                print_warning(f"ZLIB decompression faild on entry {self.get_readable_type()}")
+                return self.body.get_bytes()
 
     def get_decrypted(self) -> bytes:
         return self.header.get_bytes() + self.get_decrypted_body()
