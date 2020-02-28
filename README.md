@@ -143,12 +143,13 @@ optional arguments:
                        -n:      list unique entries only ordered by their offset
 
   -X, --extract-entry  Extract one or more PSP firmware entries.
-                       [-d idx [-e idx]] [-n] [-u] [-k] [-o outfile]
+                       [-d idx [-e idx]] [-n] [-u] [-c] [-k] [-o outfile]
 
                        -d idx:  specifies directory_index (default: all directories)
                        -e idx:  specifies entry_index (default: all entries)
                        -n:      skip duplicate entries and extract unique entries only
                        -u:      uncompress compressed entries
+                       -c:      try to decrypt entries
                        -k:      convert pubkeys into PEM format
                        -o file: specifies outfile/outdir (default: stdout/{file}_extracted)
 
