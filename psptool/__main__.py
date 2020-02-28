@@ -18,7 +18,7 @@ import sys
 import os
 
 from .psptool import PSPTool
-from .utils import ObligingArgumentParser, print_warning
+from .utils import ObligingArgumentParser, print_warning, print_error_and_exit
 from .entry import PubkeyEntry, HeaderEntry
 
 from argparse import RawTextHelpFormatter, SUPPRESS
@@ -38,6 +38,7 @@ def main():
     parser.add_argument('-s', '--subfile', help=SUPPRESS)
     parser.add_argument('-o', '--outfile', help=SUPPRESS)
     parser.add_argument('-u', '--decompress', help=SUPPRESS, action='store_true')
+    parser.add_argument('-c', '--decrypt', help=SUPPRESS, action='store_true')
     parser.add_argument('-k', '--pem-key', help=SUPPRESS, action='store_true')
     parser.add_argument('-n', '--no-duplicates', help=SUPPRESS, action='store_true')
 
@@ -52,12 +53,13 @@ def main():
 
     action.add_argument('-X', '--extract-entry', help='\n'.join([
         'Extract one or more PSP firmware entries.',
-        '[-d idx [-e idx]] [-n] [-u] [-k] [-o outfile]',
+        '[-d idx [-e idx]] [-n] [-u] [-c] [-k] [-o outfile]',
         '',
         '-d idx:  specifies directory_index (default: all directories)',
         '-e idx:  specifies entry_index (default: all entries)',
         '-n:      skip duplicate entries and extract unique entries only',
         '-u:      uncompress compressed entries',
+        '-c:      try to decrypt entries',
         '-k:      convert pubkeys into PEM format',
         '-o file: specifies outfile/outdir (default: stdout/{file}_extracted)',
         '', '']), action='store_true')
@@ -82,7 +84,13 @@ def main():
             entry = psp.blob.directories[args.directory_index].entries[args.entry_index]
 
             if args.decompress:
+                if not entry.compressed:
+                    print_error_and_exit(f'Entry is not compressed {entry.get_readable_type()}')
                 output = entry.get_decompressed()
+            elif args.decrypt:
+                if not entry.encrypted:
+                    print_error_and_exit(f'Entry is not encrypted {entry.get_readable_type()}')
+                output = entry.get_decrypted()
             elif args.pem_key:
                 output = entry.get_pem_encoded()
             else:
@@ -100,6 +108,8 @@ def main():
                         for entry_index, entry in enumerate(directory.entries):
                             if args.decompress and type(entry) is HeaderEntry:
                                 out_bytes = entry.get_decompressed()
+                            elif args.decrypt and type(entry) is HeaderEntry:
+                                out_bytes = entry.get_decrypted()
                             elif args.pem_key and type(entry) is PubkeyEntry:
                                 out_bytes = entry.get_pem_encoded()
                             else:
@@ -117,6 +127,8 @@ def main():
                     for entry in psp.blob.unique_entries:
                         if args.decompress and type(entry) is HeaderEntry:
                             out_bytes = entry.get_decompressed()
+                        elif args.decrypt and type(entry) is HeaderEntry:
+                            out_bytes = entry.get_decrypted()
                         elif args.pem_key and type(entry) is PubkeyEntry:
                             out_bytes = entry.get_pem_encoded()
                         else:
