@@ -35,8 +35,6 @@ from cryptography.hazmat.primitives.asymmetric import padding
 from cryptography.hazmat.primitives import hashes
 from cryptography.exceptions import InvalidSignature
 
-from IPython import embed
-
 
 class Entry(NestedBuffer):
     ENTRY_ALIGNMENT = 0x100
