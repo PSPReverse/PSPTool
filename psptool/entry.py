@@ -16,6 +16,7 @@
 
 import string
 import struct
+import traceback
 
 from .utils import NestedBuffer
 from .utils import shannon
@@ -28,6 +29,10 @@ from binascii import hexlify
 from base64 import b64encode
 from math import ceil
 from hashlib import md5
+
+import sys
+import zlib
+import re
 
 from cryptography.hazmat.primitives.serialization import load_der_public_key
 from cryptography.hazmat.backends import default_backend
@@ -109,37 +114,67 @@ class Entry(NestedBuffer):
         pass
 
     @classmethod
-    def from_fields(cls, parent_directory, parent_buffer, type_, size, offset):
-        if type_ in [0x0B, 0x30062, 0x40, 0x70]:  # i.e. SOFT_FUSE_CHAIN_01, UEFI-IMAGE or secondary dir links
+    def from_fields(cls, parent_directory, parent_buffer, type_, size, offset, blob):
+        # Try to parse these ID's as a key entry
+        PUBKEY_ENTRY_TYPES = [ 0x0, 0x9, 0xa, 0x5, 0xd]
+
+        # Types known to have no PSP HDR
+        # TODO: Find a better wat to identify those entries
+        NO_HDR_ENTRY_TYPES = [ 0x4, 0xb, 0x21, 0x40, 0x70, 0x30062, 0x6, 0x61, 0x60,
+                               0x68, 0x100060, 0x100068, 0x5f, 0x15f, 0x1a, 0x22, 0x63,
+                               0x67 , 0x66, 0x100066, 0x200066, 0x300066, 0x10062,
+                               0x400066, 0x500066, 0x800068, 0x61, 0x200060, 0x300060,
+                               0x300068, 0x400068, 0x500068, 0x400060, 0x500060, 0x200068]
+        NO_SIZE_ENTRY_TYPES = [ 0xb]
+
+        new_entry = None
+
+        if type_ in NO_SIZE_ENTRY_TYPES:
             size = 0
 
-        try:
-            # Option 1: it's a PubkeyEntry
-            new_entry = PubkeyEntry(parent_directory, parent_buffer, type_, size, buffer_offset=offset)
-        except (cls.ParseError, AssertionError):
+        if type_ in NO_HDR_ENTRY_TYPES:
+            # Option 1: it's a plain Entry
             try:
-                # Option 2: it's a HeaderEntry (most common)
-                new_entry = HeaderEntry(parent_directory, parent_buffer, type_, size, buffer_offset=offset)
-            except (cls.ParseError, AssertionError):
-                # Option 3: it's a plain Entry
-                new_entry = Entry(parent_directory, parent_buffer, type_, size, buffer_offset=offset)
+                new_entry = Entry(parent_directory, parent_buffer, type_, size, buffer_offset=offset, blob=blob)
+            except:
+                print_warning(f"Couldn't parse plain entry: 0x{type_:x}")
+
+        elif type_ in PUBKEY_ENTRY_TYPES:
+            # Option 2: it's a PubkeyEntry
+
+            try:
+                new_entry = PubkeyEntry(parent_directory, parent_buffer, type_, size, buffer_offset=offset, blob=blob)
+            except:
+                print_warning(f"Couldn't parse pubkey entry 0x{type_:x}")
+        else:
+            # Option 3: it's a HeaderEntry (most common)
+            if size == 0:
+                # If the size in the directory is zero, set the size to hdr len
+                size = HeaderEntry.HEADER_LEN
+            new_entry = HeaderEntry(parent_directory, parent_buffer, type_, size, buffer_offset=offset, blob=blob)
+            if size == 0:
+                print_warning(f"Entry with zero size. Type: {type_}. Dir: 0x{offset:x}")
 
         return new_entry
 
-    def __init__(self, parent_directory, parent_buffer, type_, buffer_size, buffer_offset: int):
+    def __init__(self, parent_directory, parent_buffer, type_, buffer_size, buffer_offset: int, blob):
         super().__init__(parent_buffer, buffer_size, buffer_offset=buffer_offset)
 
-        self.blob = parent_buffer
+        # TODO: Fix to reference of FET
+        self.blob = blob
         self.type = type_
         self.references = [parent_directory]
+        self.parent_directory = parent_directory
 
         self.compressed = False
         self.signed = False
         self.encrypted = False
+        self.is_legacy = False
 
         try:
             self._parse()
         except (struct.error, AssertionError):
+            print_warning(f"Couldn't parse entry at: 0x{self.get_address():x}. Type: {self.get_readable_type()}. Size 0x{len(self):x}")
             raise Entry.ParseError()
 
     def __repr__(self):
@@ -251,8 +286,11 @@ class PubkeyEntry(Entry):
 
 
 class HeaderEntry(Entry):
+
+    HEADER_LEN = 0x100
+
     def _parse(self):
-        self.header = NestedBuffer(self, 0x100)
+        self.header = NestedBuffer(self, HeaderEntry.HEADER_LEN)
 
         # todo: use NestedBuffers instead of saving by value
         self.magic = self.header[0x10:0x14]
@@ -261,22 +299,123 @@ class HeaderEntry(Entry):
         self.signed = struct.unpack('<I', self.header[0x30:0x34])[0] == 1
         self.signature_fingerprint = hexlify(self.header[0x38:0x48])
         self.compressed = struct.unpack('<I', self.header[0x48:0x4c])[0] == 1
-        self.size_full = struct.unpack('<I', self.header[0x50:0x54])[0]
+        self.size_uncompressed = struct.unpack('<I', self.header[0x50:0x54])[0]
         self.version = self.header[0x63:0x5f:-1]
-        self.unknown = struct.unpack('<I', self.header[0x68:0x6c])[0]
-        self.size_packed = struct.unpack('<I', self.header[0x6c:0x70])[0]
+        self.load_addr = struct.unpack('<I', self.header[0x68:0x6c])[0]
+        self.rom_size = struct.unpack('<I', self.header[0x6c:0x70])[0]
+        self.zlib_size = struct.unpack('<I', self.header[0x54:0x58])[0]
 
-        self.unknown_fingerprint1 = hexlify(self.header[0x20:0x30])
+        self.iv = hexlify(self.header[0x20:0x30])
         self.unknown_bool = struct.unpack('<I', self.header[0x7c:0x80])[0]
-        self.unknown_fingerprint2 = hexlify(self.header[0x80:0x90])
+        self.wrapped_key = hexlify(self.header[0x80:0x90])
 
-        assert(self.size_packed <= self.buffer_size)
+
+        # TODO: Take care of headers with only 0xfff...
+
+        # TODO if zlib_size == 0 try size_signed
+
+        # print_warning(f"{self.size_rom:x}")
+        # print_warning(f"{self.buffer_size:x}")
+        # if self.size_rom > self.buffer_size:
+        #     embed()
+        # assert(self.size_rom <= self.buffer_size)
+
         assert(self.compressed in [0, 1])
         assert(self.encrypted in [0, 1])
-        assert(self.get_readable_version() not in ['0.0.0.0', 'FF.FF.FF.FF'])
 
-        # update buffer size with more precise size_packed
-        self.buffer_size = self.size_packed
+        # if not self.signed and not self.size_signed:
+        #     print_warning(f"Type {self.get_readable_type():<35} Addr: 0x{self.get_address():<10x} size_signed 0x{self.size_signed:<10x} signed {self.signed:x} compressed {self.compressed:x} size_full 0x{self.size_full:<10x} size_rom 0x{self.size_rom:<10x} zlib_size 0x{self.zlib_size:x}")
+
+        # Parse signature information to determine the pubkey in use and the 
+        # length of the signature.
+        if self.signed:
+            self._parse_signature()
+        else:
+            self.signature_len = 0
+
+        self.header_len = 0x100
+        # print_warning(f"Type {self.get_readable_type():<35} Addr: 0x{self.get_address():<10x} size_signed 0x{self.size_signed:<10x} signed {self.signed:x} compressed {self.compressed:x} size_uncompressed 0x{self.size_uncompressed :<10x} size_rom 0x{self.size_rom:<10x} zlib_size 0x{self.zlib_size:x}")
+
+        if self.rom_size == 0 or (self.compressed and self.zlib_size == 0):
+            # Try to parse as legacy header
+            self._parse_legacy_hdr()
+            # if self.type == 0x10:
+            #     embed()
+        else:
+            self._parse_hdr()
+        return
+
+        if self.signed:
+            try:
+                if self.signature_fingerprint != hexlify(16 * b'\x00'):
+                    pubkey: PubkeyEntry = self.blob.pubkeys[self.signature_fingerprint]
+                    self.signature_len = len(pubkey.modulus)
+                else:
+                    print_warning("ERROR: Signed but no key id present")
+                    sys.exit(0)
+            except KeyError:
+                print_warning(f'No Pubkey! ({self.get_readable_signed_by()}) not found.')
+                sys.exit(0)
+            if self.rom_size != 0:
+                buf_start = self.get_address()
+                sig_start = self.get_address() + self.rom_size - self.signature_len
+            else:
+                # Legacy HDR
+                buf_start = self.get_address()
+                sig_start = buf_start + self.size_signed + 0x100
+
+            print_warning(f"Signature at: 0x{buf_start:x} sig_start: 0x{sig_start:x}")
+            self.signature = NestedBuffer(self, self.signature_len, sig_start)
+        else:
+            self.signature_len = 0
+
+
+        if self.compressed:
+            if self.zlib_size != 0:
+                # Normal case, the zlib size indicates the size of the compressed entry
+                self.buffer_size = self.zlib_size + self.signature_len + self.header_len
+            elif self.size_signed != 0:
+                # Weird headers. Try to use size_signed
+                self.buffer_size = self.size_signed + self.header_len
+            else:
+                # TODO: catch this case
+                print_warning(f"ERROR WEIRD HEADER")
+            try:
+                data = zlib.decompress(self[self.header_len:self.buffer_size])
+                if self.get_address()  == 0x19d000:
+                    with open("/tmp/agesa_res_fw", 'wb') as f:
+                        f.write(data)
+                print_warning("Decompress successful")
+            except:
+                print_warning(f"ZLIB failed")
+        elif self.signed:
+            if self.rom_size != 0:
+                self.buffer_size = self.rom_size
+            elif self.size_signed != 0:
+                # Weird header. Try to use size_signed
+                self.buffer_size = self.size_signed + self.signature_len + self.header_len
+            else:
+                print_warning(f"ERROR size packed is zero")
+        else:
+            self.buffer_size = self.size_signed + 0x100
+
+        print_warning(f"Buffer start: {self.get_address():x} Buffer end: {self.get_address() + self.buffer_size:x}\n")
+
+
+
+        # assert(self.get_readable_version() not in ['0.0.0.0', 'FF.FF.FF.FF'])
+
+        # update buffer size with more precise size_rom
+        if self.compressed:
+            if self.size_signed == 0:
+                assert(self.rom_size != 0)
+                self.buffer_size = self.rom_size
+            else:
+                self.buffer_size = self.size_signed
+        # if size_rom is zero, use size_signed
+        elif self.size_signed != 0:
+            assert(self.size_signed != 0)
+            self.buffer_size = self.size_signed
 
         # Get IV and wrapped KEY from entry header
         if self.encrypted:
@@ -288,11 +427,83 @@ class HeaderEntry(Entry):
         # Note: This is a heuristic and it would be better to find out by looking at the signing key's modulus size.
         # However, this might not have been parsed at this point.
         signature_size = 0x100                            # Assume a default signature size of 0x100,
-        if self.size_packed - self.size_signed == 0x300:  # unless the size_signed and size_packed indicate a 0x200 sig.
-            signature_size = 0x200
+        # if self.size_rom - self.size_signed == 0x300:  # unless the size_signed and size_rom indicate a 0x200 sig.
+            # signature_size = 0x200
 
         self.body = NestedBuffer(self, len(self) - 0x100 - signature_size, 0x100)
         self.signature = NestedBuffer(self, 0x100, len(self) - signature_size)
+
+    def _parse_signature(self):
+        if self.signature_fingerprint != hexlify(16 * b'\x00'):
+            try:
+                self.pubkey = self.blob.pubkeys[self.signature_fingerprint]
+                self.signature_len = len(self.pubkey.modulus)
+            except KeyError:
+                # Key not found yet, try to find it anywhere in the blob
+                self.blob.find_pubkey(self[0x38:0x48])
+                try:
+                    self.pubkey = self.blob.pubkeys[self.signature_fingerprint]
+                except KeyError:
+                    print(f"Couldn't find corresponding key in blob for entry at: 0x{self.get_address():x}. Type: {self.get_readable_type()}")
+                    self.signature_len = 0x0
+                    self.signed = False
+                    return
+            self.signature_len = len(self.pubkey.modulus)
+        else:
+            print_warning("ERROR: Signed but no key id present")
+
+
+
+
+    def _parse_legacy_hdr(self):
+
+        self.buffer_size = self.size_signed + self.header_len
+
+        if self.compressed:
+            self.zlib_size = self.size_signed
+
+        if self.signed and not self.compressed:
+            # The signature can be found in the last 'signature_len' bytes of the entry
+            self.signature = NestedBuffer(self,self.signature_len, len(self) - self.signature_len)
+        else:
+            #TODO create nested buffer with uncompressed signature
+            # raw_bytes = zlib.decompress(self[0x100:])
+            self.signature = None
+
+
+        self.body = NestedBuffer(self, len(self) - self.size_signed - self.header_len, self.header_len)
+        self.is_legacy = True
+
+    def _parse_hdr(self):
+        if self.rom_size == 0:
+            #TODO throw exception
+            self.buffer_size = self.size_signed + self.header_len
+            print_warning("ERROR. rom size is zero")
+        else:
+            self.buffer_size = self.rom_size
+
+        if self.signed:
+            buf_start = self.get_address()
+            sig_start = self.get_address() + self.rom_size - self.signature_len
+            # print_warning(f"Signature at: 0x{buf_start:x} sig_start: 0x{sig_start:x}")
+            self.signature = NestedBuffer(self, self.signature_len, sig_start - buf_start)
+
+
+        if self.compressed:
+            if self.zlib_size == 0:
+                # Todo throw exception
+                print_warning(f"ERROR: Weird entry. Address 0x{self.get_address():x}")
+
+        # Get IV and wrapped KEY from entry header
+        if self.encrypted:
+            self.iv = self.header[0x20:0x30]
+            self.key = self.header[0x80:0x90]
+            assert(self.iv != (b'\x00' * 16))
+            assert(self.key != (b'\x00' * 16))
+
+        self.body = NestedBuffer(self, len(self) - self.header_len - self.signature_len, self.header_len)
+        self.is_legacy = False
+
 
     def get_readable_version(self):
         return '.'.join([hex(b)[2:].upper() for b in self.version])
@@ -333,7 +544,7 @@ class HeaderEntry(Entry):
             return self.body.get_bytes()
         else:
             try:
-                return zlib_decompress(self.body.get_bytes())
+                return zlib_decompress(self.body.get_bytes()[:self.zlib_size])
             except:
                 print_warning(f"ZLIB decompression faild on entry {self.get_readable_type()}")
                 return self.body.get_bytes()
@@ -369,43 +580,62 @@ class HeaderEntry(Entry):
 
     def md5(self):
         m = md5()
-        m.update(self.body.get_bytes())
+        try:
+            m.update(self.body.get_bytes())
+        except:
+            print(f"Get bytes failed at entry: 0x{self.get_address():x} type: {self.get_readable_type()} size: 0x{self.buffer_size:x}")
         return m.hexdigest()
 
     def verify_signature(self):
-        if self.buffer_size == 0:
-            return False
+        # if self.buffer_size == 0:
+        #     return False
 
-        try:
-            pubkey: PubkeyEntry = self.blob.pubkeys[self.signature_fingerprint]
-        except KeyError:
-            self.blob.psptool.print_warning(f'Corresponding public key ({self.signature_fingerprint[:4]}) not found. '
-                                            f'Signature verification failed.')
-            return False
+        # try:
+        #     pubkey: PubkeyEntry = self.blob.pubkeys[self.signature_fingerprint]
+        # except KeyError:
+        #     print_warning(f'Corresponding public key ({self.signature_fingerprint[:4]}) not found. '
+        #                                     f'Signature verification failed.')
+        #     return False
 
-        signature_size = len(pubkey.modulus)
+        # signature_size = len(pubkey.modulus)
 
-        if signature_size != 0x100:
-            self.blob.psptool.print_warning('Signatures of other key length than 2048 bit are unsupported.')
-            return False
+        # if signature_size != 0x100:
+        #     print_warning('Signatures of other key length than 2048 bit are unsupported.')
+        #     return False
 
         # Note: This does not work if an entry was compressed AND encrypted.
         # However, we have not yet seen such entry.
+
+        # Only verify signature if we actually have a signature
+        if self.signature == None:
+            return False
+
         if self.compressed:
-            signed_data = self.get_decompressed()
+            signed_data = self.get_decompressed()[:self.size_signed + self.header_len]
         elif self.encrypted:
-            signed_data = self.get_decrypted()
+            signed_data = self.get_decrypted()[:self.size_signed + self.header_len]
         else:
-            signed_data = self.get_bytes()
+            signed_data = self.get_bytes()[:self.size_signed + self.header_len]
 
-        signature = self.get_bytes(offset=self.buffer_size - signature_size, size=signature_size)
+        # signature = self.get_bytes(offset=self.buffer_size - signature_size, size=signature_size)
 
-        pubkey_der_encoded = pubkey.get_der_encoded()
+        # print_warning(f"LEN body: {len(self.body.get_bytes()):x} Size signed: {self.size_signed:x}")
+        # print_warning(type(self.signature.get_bytes()))
+        # signature = self.signature.get_bytes()
+        # print_warning(f"LEN SIG: {len(signature):x} LEN DATA {len(signed_data):x}")
+
+        try:
+            pubkey_der_encoded = self.pubkey.get_der_encoded()
+        except AttributeError:
+            print_warning(f"Entry {self.get_readable_type()} is signed, but corresponding pubkey was not found ({self.get_readable_signed_by()})")
+            return
+
         crypto_pubkey = load_der_public_key(pubkey_der_encoded, backend=default_backend())
+        # print_warning(hexlify(self.signature.get_bytes()))
 
         try:
             crypto_pubkey.verify(
-                signature,
+                self.signature.get_bytes(),
                 signed_data,
                 padding.PSS(
                     mgf=padding.MGF1(hashes.SHA256()),

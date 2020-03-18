@@ -16,11 +16,10 @@
 
 import struct
 
-from .utils import NestedBuffer, chunker, fletcher32
+from .utils import NestedBuffer, chunker, fletcher32, print_warning
 from .entry import Entry, PubkeyEntry
 
 from typing import List
-
 
 class Directory(NestedBuffer):
     ENTRY_FIELDS = ['type', 'size', 'offset', 'rsv0', 'rsv1', 'rsv2']
@@ -41,11 +40,12 @@ class Directory(NestedBuffer):
 
     _ENTRY_TYPES_SECONDARY_DIR = [0x40, 0x70]
 
-    def __init__(self, parent_buffer, buffer_offset: int, type_: str):
+    def __init__(self, parent_buffer, buffer_offset: int, type_: str, blob):
         self.parent_buffer = parent_buffer
         self.buffer_offset = buffer_offset
 
-        self.blob = parent_buffer
+        self.blob = blob
+        self.fet = parent_buffer
 
         self.checksum = None
         self._count = None
@@ -57,15 +57,18 @@ class Directory(NestedBuffer):
 
         self.type = type_
         self.entries: List[Entry] = []
-        self.unique_entries = set()
 
         self._entry_size = self._ENTRY_SIZES[self.magic]
+
+        # First parse all the pubkeys. We need those to calculate the size of a signature
+        self._parse_pubkeys()
         self._parse_entries()
 
         # check entries for a link to a secondary directory (i.e. a continuation of this directory)
         self.secondary_directory_address = None
         for entry in self.entries:
             if entry.type in self._ENTRY_TYPES_SECONDARY_DIR:
+                # print_warning(f"Secondary dir at 0x{entry.buffer_offset:x}")
                 self.secondary_directory_address = entry.buffer_offset
 
     def __repr__(self):
@@ -95,6 +98,30 @@ class Directory(NestedBuffer):
         self.buffer_size = len(self.header) + len(self.body)
         self.checksum = NestedBuffer(self, 4, 4)
 
+    def _parse_pubkeys(self):
+        for entry_bytes in self.body.get_chunks(self._entry_size):
+            entry_fields = {}
+            for key, word in zip(self.ENTRY_FIELDS, chunker(entry_bytes, 4)):
+                entry_fields[key] = struct.unpack('<I', word)[0]
+
+            # ROMs will be mapped into memory to fit the very end of the 32 bit memory
+            #  -> most ROMs are 16 MB in size, so addresses are starting at 0xFF000000
+            entry_fields['offset'] &= 0x00FFFFFF
+            #  -> some ROMs are 8 MB in size, so addresses are starting at 0xFF800000
+            # if len(self.blob) == 0x800000:
+            #     entry_fields['offset'] &= 0x7FFFFF
+
+            if entry_fields['type'] in [ 0x0, 0x9, 0xa, 0x5, 0xd ]:
+                entry = Entry.from_fields(self, self.parent_buffer,
+                                          entry_fields['type'],
+                                          entry_fields['size'],
+                                          entry_fields['offset'],self.blob)
+                if isinstance(entry, PubkeyEntry):
+                    self.blob.pubkeys[entry.key_id] = entry
+                else:
+                    print_warning(f"ERROR id is not a pubkey")
+
+
     def _parse_entries(self):
         for entry_bytes in self.body.get_chunks(self._entry_size):
             entry_fields = {}
@@ -105,18 +132,17 @@ class Directory(NestedBuffer):
             #  -> most ROMs are 16 MB in size, so addresses are starting at 0xFF000000
             entry_fields['offset'] &= 0x00FFFFFF
             #  -> some ROMs are 8 MB in size, so addresses are starting at 0xFF800000
-            if len(self.blob) == 0x800000:
-                entry_fields['offset'] &= 0x7FFFFF
+            # if len(self.blob) == 0x800000:
+            #     entry_fields['offset'] &= 0x7FFFFF
 
-            entry = Entry.from_fields(self, self.parent_buffer, entry_fields['type'], entry_fields['size'],
-                                      entry_fields['offset'])
+            entry = Entry.from_fields(self, self.parent_buffer,
+                                      entry_fields['type'],
+                                      entry_fields['size'],
+                                      entry_fields['offset'], self.blob)
 
             for existing_entry in self.blob.unique_entries:
                 if entry == existing_entry:
                     existing_entry.references.append(self)
-
-            if isinstance(entry, PubkeyEntry):
-                self.blob.pubkeys[entry.key_id] = entry
 
             self.blob.unique_entries.add(entry)
             self.entries.append(entry)

@@ -87,6 +87,8 @@ class PSPTool:
                 info.append('signed(%s)' % entry.get_readable_signed_by())
                 if entry.verify_signature():
                     info.append('verified')
+            if entry.is_legacy:
+                info.append('legacy Header')
             if entry.encrypted:
                 info.append('encrypted')
 
@@ -105,8 +107,8 @@ class PSPTool:
             if type(entry) is HeaderEntry:
                 all_values += [hex(v) for v in [
                     entry.size_signed,
-                    entry.size_full,
-                    entry.size_packed
+                    entry.size_uncompressed,
+                    entry.rom_size
                 ]]
             else:
                 all_values += (3 * [''])
