@@ -25,6 +25,8 @@ from .directory import Directory
 from .entry import Entry, PubkeyEntry
 from .fet import Fet
 
+from IPython import embed
+
 
 class Blob(NestedBuffer):
     _FIRMWARE_ENTRY_MAGIC = b'\xAA\x55\xAA\x55'
@@ -59,17 +61,24 @@ class Blob(NestedBuffer):
         # from https://www.amd.com/system/files/TechDocs/44065_Arch2008.pdf
 
         # todo: use NestedBuffers instead of saving by value
-        start = self.get_buffer().find(b'AGESA!')
-        version_string = self[start:start + 36]
 
-        agesa_magic = version_string[0:8]
-        component_name = version_string[9:16]
-        version = version_string[16:]
+        m = re.compile(b"AGESA!..\x00.*?\x00")
+        res = m.findall(self.get_buffer())
 
-        try:
-            self.agesa_version = str(b''.join([agesa_magic, b' ', component_name, version]), 'ascii').rstrip('\x00')
-        except:
-            self.agesa_version = "UNKNOWN"
+        # Some Images contain actually two ROM images. I.e. one for Naples and 
+        # one for Rome. Both will contain a valid FET which needs to be parsed.
+        if len(res) == 2:
+            self.dual_rom = True
+        else:
+            self.dual_rom = False
+
+        # Fail if we find more than two AGESA versions strings.
+        assert(len(res) <= 2)
+
+        # TODO: Handle the case where there are multiple matches
+        self.agesa_version = str(re.sub(b'\x00',b' ',res[0]).strip().decode("ascii"))
+
+
 
     def _find_entry_table(self):
         # AA55AA55 is to unspecific, so we require a word of padding before (to be tested)

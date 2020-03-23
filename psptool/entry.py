@@ -444,7 +444,7 @@ class HeaderEntry(Entry):
                 try:
                     self.pubkey = self.blob.pubkeys[self.signature_fingerprint]
                 except KeyError:
-                    print(f"Couldn't find corresponding key in blob for entry at: 0x{self.get_address():x}. Type: {self.get_readable_type()}")
+                    print_warning(f"Couldn't find corresponding key in blob for entry at: 0x{self.get_address():x}. Type: {self.get_readable_type()}")
                     self.signature_len = 0x0
                     self.signed = False
                     return
