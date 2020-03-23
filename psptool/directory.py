@@ -40,12 +40,14 @@ class Directory(NestedBuffer):
 
     _ENTRY_TYPES_SECONDARY_DIR = [0x40, 0x70]
 
-    def __init__(self, parent_buffer, buffer_offset: int, type_: str, blob):
+    def __init__(self, parent_buffer, buffer_offset: int, type_: str, blob, agesa_version):
         self.parent_buffer = parent_buffer
         self.buffer_offset = buffer_offset
 
         self.blob = blob
         self.fet = parent_buffer
+
+        self.agesa_version = agesa_version
 
         self.checksum = None
         self._count = None
@@ -115,7 +117,8 @@ class Directory(NestedBuffer):
                 entry = Entry.from_fields(self, self.parent_buffer,
                                           entry_fields['type'],
                                           entry_fields['size'],
-                                          entry_fields['offset'],self.blob)
+                                          entry_fields['offset'],
+                                          self.blob, self.agesa_version)
                 if isinstance(entry, PubkeyEntry):
                     self.blob.pubkeys[entry.key_id] = entry
                 else:
@@ -138,7 +141,8 @@ class Directory(NestedBuffer):
             entry = Entry.from_fields(self, self.parent_buffer,
                                       entry_fields['type'],
                                       entry_fields['size'],
-                                      entry_fields['offset'], self.blob)
+                                      entry_fields['offset'],
+                                      self.blob, self.agesa_version)
 
             for existing_entry in self.blob.unique_entries:
                 if entry == existing_entry:

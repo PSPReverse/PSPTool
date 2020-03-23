@@ -114,7 +114,7 @@ class Entry(NestedBuffer):
         pass
 
     @classmethod
-    def from_fields(cls, parent_directory, parent_buffer, type_, size, offset, blob):
+    def from_fields(cls, parent_directory, parent_buffer, type_, size, offset, blob, agesa_version):
         # Try to parse these ID's as a key entry
         PUBKEY_ENTRY_TYPES = [ 0x0, 0x9, 0xa, 0x5, 0xd]
 
@@ -135,7 +135,7 @@ class Entry(NestedBuffer):
         if type_ in NO_HDR_ENTRY_TYPES:
             # Option 1: it's a plain Entry
             try:
-                new_entry = Entry(parent_directory, parent_buffer, type_, size, buffer_offset=offset, blob=blob)
+                new_entry = Entry(parent_directory, parent_buffer, type_, size, buffer_offset=offset, blob=blob, agesa_version=agesa_version)
             except:
                 print_warning(f"Couldn't parse plain entry: 0x{type_:x}")
 
@@ -143,7 +143,7 @@ class Entry(NestedBuffer):
             # Option 2: it's a PubkeyEntry
 
             try:
-                new_entry = PubkeyEntry(parent_directory, parent_buffer, type_, size, buffer_offset=offset, blob=blob)
+                new_entry = PubkeyEntry(parent_directory, parent_buffer, type_, size, buffer_offset=offset, blob=blob,agesa_version=agesa_version)
             except:
                 print_warning(f"Couldn't parse pubkey entry 0x{type_:x}")
         else:
@@ -151,13 +151,13 @@ class Entry(NestedBuffer):
             if size == 0:
                 # If the size in the directory is zero, set the size to hdr len
                 size = HeaderEntry.HEADER_LEN
-            new_entry = HeaderEntry(parent_directory, parent_buffer, type_, size, buffer_offset=offset, blob=blob)
+            new_entry = HeaderEntry(parent_directory, parent_buffer, type_, size, buffer_offset=offset, blob=blob, agesa_version=agesa_version)
             if size == 0:
                 print_warning(f"Entry with zero size. Type: {type_}. Dir: 0x{offset:x}")
 
         return new_entry
 
-    def __init__(self, parent_directory, parent_buffer, type_, buffer_size, buffer_offset: int, blob):
+    def __init__(self, parent_directory, parent_buffer, type_, buffer_size, buffer_offset: int, blob, agesa_version):
         super().__init__(parent_buffer, buffer_size, buffer_offset=buffer_offset)
 
         # TODO: Fix to reference of FET
@@ -165,6 +165,8 @@ class Entry(NestedBuffer):
         self.type = type_
         self.references = [parent_directory]
         self.parent_directory = parent_directory
+
+        self.agesa_version = agesa_version
 
         self.compressed = False
         self.signed = False
@@ -344,94 +346,6 @@ class HeaderEntry(Entry):
         else:
             self._parse_hdr()
         return
-
-        if self.signed:
-            try:
-                if self.signature_fingerprint != hexlify(16 * b'\x00'):
-                    pubkey: PubkeyEntry = self.blob.pubkeys[self.signature_fingerprint]
-                    self.signature_len = len(pubkey.modulus)
-                else:
-                    print_warning("ERROR: Signed but no key id present")
-                    sys.exit(0)
-            except KeyError:
-                print_warning(f'No Pubkey! ({self.get_readable_signed_by()}) not found.')
-                sys.exit(0)
-            if self.rom_size != 0:
-                buf_start = self.get_address()
-                sig_start = self.get_address() + self.rom_size - self.signature_len
-            else:
-                # Legacy HDR
-                buf_start = self.get_address()
-                sig_start = buf_start + self.size_signed + 0x100
-
-            print_warning(f"Signature at: 0x{buf_start:x} sig_start: 0x{sig_start:x}")
-            self.signature = NestedBuffer(self, self.signature_len, sig_start)
-        else:
-            self.signature_len = 0
-
-
-        if self.compressed:
-            if self.zlib_size != 0:
-                # Normal case, the zlib size indicates the size of the compressed entry
-                self.buffer_size = self.zlib_size + self.signature_len + self.header_len
-            elif self.size_signed != 0:
-                # Weird headers. Try to use size_signed
-                self.buffer_size = self.size_signed + self.header_len
-            else:
-                # TODO: catch this case
-                print_warning(f"ERROR WEIRD HEADER")
-            try:
-                data = zlib.decompress(self[self.header_len:self.buffer_size])
-                if self.get_address()  == 0x19d000:
-                    with open("/tmp/agesa_res_fw", 'wb') as f:
-                        f.write(data)
-                print_warning("Decompress successful")
-            except:
-                print_warning(f"ZLIB failed")
-        elif self.signed:
-            if self.rom_size != 0:
-                self.buffer_size = self.rom_size
-            elif self.size_signed != 0:
-                # Weird header. Try to use size_signed
-                self.buffer_size = self.size_signed + self.signature_len + self.header_len
-            else:
-                print_warning(f"ERROR size packed is zero")
-        else:
-            self.buffer_size = self.size_signed + 0x100
-
-        print_warning(f"Buffer start: {self.get_address():x} Buffer end: {self.get_address() + self.buffer_size:x}\n")
-
-
-
-        # assert(self.get_readable_version() not in ['0.0.0.0', 'FF.FF.FF.FF'])
-
-        # update buffer size with more precise size_rom
-        if self.compressed:
-            if self.size_signed == 0:
-                assert(self.rom_size != 0)
-                self.buffer_size = self.rom_size
-            else:
-                self.buffer_size = self.size_signed
-        # if size_rom is zero, use size_signed
-        elif self.size_signed != 0:
-            assert(self.size_signed != 0)
-            self.buffer_size = self.size_signed
-
-        # Get IV and wrapped KEY from entry header
-        if self.encrypted:
-            self.iv = self.header[0x20:0x30]
-            self.key = self.header[0x80:0x90]
-            assert(self.iv != (b'\x00' * 16))
-            assert(self.key != (b'\x00' * 16))
-
-        # Note: This is a heuristic and it would be better to find out by looking at the signing key's modulus size.
-        # However, this might not have been parsed at this point.
-        signature_size = 0x100                            # Assume a default signature size of 0x100,
-        # if self.size_rom - self.size_signed == 0x300:  # unless the size_signed and size_rom indicate a 0x200 sig.
-            # signature_size = 0x200
-
-        self.body = NestedBuffer(self, len(self) - 0x100 - signature_size, 0x100)
-        self.signature = NestedBuffer(self, 0x100, len(self) - signature_size)
 
     def _parse_signature(self):
         if self.signature_fingerprint != hexlify(16 * b'\x00'):

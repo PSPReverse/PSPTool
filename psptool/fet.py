@@ -24,12 +24,14 @@ from binascii import hexlify
 from IPython import embed
 
 class Fet(NestedBuffer):
-    def __init__(self, parent_buffer, fet_offset: int):
+    def __init__(self, parent_buffer, fet_offset: int, agesa_version):
 
         self.blob = parent_buffer
 
         self.parent_buffer = parent_buffer
         self.fet_offset = fet_offset
+
+        self.agesa_version = agesa_version
 
         self._determine_size()
         self._determine_rom()
@@ -64,10 +66,10 @@ class Fet(NestedBuffer):
             # TODO: Better warning
             # print_warning("Weird PSP Combo directory. Please report this")
             return
-        dir = Directory(self, addr, type, self.blob)
+        dir = Directory(self, addr, type, self.blob, self.agesa_version)
         self.blob.directories.append(dir)
         if dir.secondary_directory_address is not None:
-            self.blob.directories.append(Directory(self, dir.secondary_directory_address, 'secondary', self.blob))
+            self.blob.directories.append(Directory(self, dir.secondary_directory_address, 'secondary', self.blob, self.agesa_version))
 
 
 

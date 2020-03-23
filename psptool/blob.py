@@ -64,10 +64,15 @@ class Blob(NestedBuffer):
         m = re.compile(b"AGESA!..\x00.*?\x00")
         res = m.findall(self.get_buffer())
 
+        # We are only interested in different agesa versions
+        res = set(res)
+        res = list(res)
+
         # Some Images contain actually two ROM images. I.e. one for Naples and 
         # one for Rome. Both will contain a valid FET which needs to be parsed.
         if len(res) == 2:
             self.dual_rom = True
+            self.agesa_version_second = str(re.sub(b'\x00',b' ',res[1]).strip().decode("ascii"))
         else:
             self.dual_rom = False
 
@@ -85,12 +90,12 @@ class Blob(NestedBuffer):
         if m is None:
             raise self.NoFirmwareEntryTableError
         fet_offset = m.start() + 4
-        self.fets.append(Fet(self, fet_offset))
+        self.fets.append(Fet(self, fet_offset, self.agesa_version))
         if self.dual_rom:
             if self[fet_offset + 0x1000000:fet_offset + 0x1000004] == self._FIRMWARE_ENTRY_MAGIC:
-                self.fets.append(Fet(self, fet_offset + 0x1000000))
+                self.fets.append(Fet(self, fet_offset + 0x1000000, self.agesa_version_second))
             else:
-                print_warning("Found two AGESA versions strings, but only one firmware entry table")
+                print_warning(f"Found two AGESA versions strings, but only one firmware entry table")
 
 
     def find_pubkey(self,fp):
@@ -111,7 +116,7 @@ class Blob(NestedBuffer):
                 else:
                     continue
                 try:
-                    entry = PubkeyEntry(self,self, '99', size, start, self)
+                    entry = PubkeyEntry(self,self, '99', size, start, self, "Agesa version unknown")
                     self.pubkeys[entry.key_id] = entry
                 except Entry.ParseError:
                     print(f"_find_pubkey: Entry parse error at 0x{start:x}")
