@@ -25,8 +25,6 @@ from .directory import Directory
 from .entry import Entry, PubkeyEntry
 from .fet import Fet
 
-from IPython import embed
-
 
 class Blob(NestedBuffer):
     _FIRMWARE_ENTRY_MAGIC = b'\xAA\x55\xAA\x55'
