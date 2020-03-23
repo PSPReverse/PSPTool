@@ -43,6 +43,7 @@ class Blob(NestedBuffer):
 
         self.unique_entries = set()
         self.pubkeys = {}
+        self.fets = []
 
         self._parse_agesa_version()
 
@@ -84,7 +85,13 @@ class Blob(NestedBuffer):
         if m is None:
             raise self.NoFirmwareEntryTableError
         fet_offset = m.start() + 4
-        self.fet = Fet(self, fet_offset)
+        self.fets.append(Fet(self, fet_offset))
+        if self.dual_rom:
+            if self[fet_offset + 0x1000000:fet_offset + 0x1000004] == self._FIRMWARE_ENTRY_MAGIC:
+                self.fets.append(Fet(self, fet_offset + 0x1000000))
+            else:
+                print_warning("Found two AGESA versions strings, but only one firmware entry table")
+
 
     def find_pubkey(self,fp):
         """ Try to find a pubkey anywhere in the blob.
