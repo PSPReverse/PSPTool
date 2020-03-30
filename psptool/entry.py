@@ -29,6 +29,7 @@ from binascii import hexlify
 from base64 import b64encode
 from math import ceil
 from hashlib import md5
+from IPython import embed
 
 import sys
 import zlib
@@ -547,15 +548,28 @@ class HeaderEntry(Entry):
         crypto_pubkey = load_der_public_key(pubkey_der_encoded, backend=default_backend())
         # print_warning(hexlify(self.signature.get_bytes()))
 
+        # if self.get_readable_signed_by() == 'FD90':
+        #     embed()
+
+        if len(self.signature) == 0x100:
+            hash = hashes.SHA256()
+            salt_len = 32
+        elif len(self.signature) == 0x200:
+            hash = hashes.SHA384()
+            salt_len = 48
+        else:
+            print_warning("Weird signature len")
+            return
+
         try:
             crypto_pubkey.verify(
                 self.signature.get_bytes(),
                 signed_data,
                 padding.PSS(
-                    mgf=padding.MGF1(hashes.SHA256()),
-                    salt_length=32
+                    mgf=padding.MGF1(hash),
+                    salt_length=salt_len
                 ),
-                hashes.SHA256()
+                hash
             )
         except InvalidSignature:
             return False
