@@ -80,12 +80,16 @@ class Blob(NestedBuffer):
         assert(len(res) <= 2)
 
         # TODO: Handle the case where there are multiple matches
-        self.agesa_version = str(re.sub(b'\x00',b' ',res[0]).strip().decode("ascii"))
+        if len(res) >= 1:
+            self.agesa_version = str(re.sub(b'\x00',b' ',res[0]).strip().decode("ascii"))
+        else:
+            self.agesa_version = str("UNKNOWN")
 
 
 
     def _find_entry_table(self):
         # AA55AA55 is to unspecific, so we require a word of padding before (to be tested)
+        # TODO: Use better regex to find FET
         m = re.search(b'\xff\xff\xff\xff' + self._FIRMWARE_ENTRY_MAGIC, self.get_buffer())
         if m is None:
             raise self.NoFirmwareEntryTableError
