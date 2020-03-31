@@ -29,7 +29,6 @@ from binascii import hexlify
 from base64 import b64encode
 from math import ceil
 from hashlib import md5
-from IPython import embed
 
 import sys
 import zlib
@@ -317,33 +316,20 @@ class HeaderEntry(Entry):
 
         # TODO if zlib_size == 0 try size_signed
 
-        # print_warning(f"{self.size_rom:x}")
-        # print_warning(f"{self.buffer_size:x}")
-        # if self.size_rom > self.buffer_size:
-        #     embed()
-        # assert(self.size_rom <= self.buffer_size)
 
         assert(self.compressed in [0, 1])
         assert(self.encrypted in [0, 1])
 
-        # if not self.signed and not self.size_signed:
-        #     print_warning(f"Type {self.get_readable_type():<35} Addr: 0x{self.get_address():<10x} size_signed 0x{self.size_signed:<10x} signed {self.signed:x} compressed {self.compressed:x} size_full 0x{self.size_full:<10x} size_rom 0x{self.size_rom:<10x} zlib_size 0x{self.zlib_size:x}")
-
-        # Parse signature information to determine the pubkey in use and the 
-        # length of the signature.
         if self.signed:
             self._parse_signature()
         else:
             self.signature_len = 0
 
         self.header_len = 0x100
-        # print_warning(f"Type {self.get_readable_type():<35} Addr: 0x{self.get_address():<10x} size_signed 0x{self.size_signed:<10x} signed {self.signed:x} compressed {self.compressed:x} size_uncompressed 0x{self.size_uncompressed :<10x} size_rom 0x{self.size_rom:<10x} zlib_size 0x{self.zlib_size:x}")
 
         if self.rom_size == 0 or (self.compressed and self.zlib_size == 0):
             # Try to parse as legacy header
             self._parse_legacy_hdr()
-            # if self.type == 0x10:
-            #     embed()
         else:
             self._parse_hdr()
         return
@@ -532,13 +518,6 @@ class HeaderEntry(Entry):
         else:
             signed_data = self.get_bytes()[:self.size_signed + self.header_len]
 
-        # signature = self.get_bytes(offset=self.buffer_size - signature_size, size=signature_size)
-
-        # print_warning(f"LEN body: {len(self.body.get_bytes()):x} Size signed: {self.size_signed:x}")
-        # print_warning(type(self.signature.get_bytes()))
-        # signature = self.signature.get_bytes()
-        # print_warning(f"LEN SIG: {len(signature):x} LEN DATA {len(signed_data):x}")
-
         try:
             pubkey_der_encoded = self.pubkey.get_der_encoded()
         except AttributeError:
@@ -546,10 +525,7 @@ class HeaderEntry(Entry):
             return
 
         crypto_pubkey = load_der_public_key(pubkey_der_encoded, backend=default_backend())
-        # print_warning(hexlify(self.signature.get_bytes()))
 
-        # if self.get_readable_signed_by() == 'FD90':
-        #     embed()
 
         if len(self.signature) == 0x100:
             hash = hashes.SHA256()

@@ -21,7 +21,6 @@ from .directory import Directory
 from typing import List
 
 from binascii import hexlify
-from IPython import embed
 
 class Fet(NestedBuffer):
     def __init__(self, parent_buffer, fet_offset: int, agesa_version):
