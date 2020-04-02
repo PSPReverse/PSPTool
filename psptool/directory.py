@@ -21,6 +21,8 @@ from .entry import Entry, PubkeyEntry
 
 from typing import List
 
+from IPython import embed
+
 class Directory(NestedBuffer):
     ENTRY_FIELDS = ['type', 'size', 'offset', 'rsv0', 'rsv1', 'rsv2']
 

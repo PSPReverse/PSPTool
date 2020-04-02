@@ -21,9 +21,14 @@ import traceback
 from .utils import NestedBuffer
 from .utils import shannon
 from .utils import chunker
-from .utils import zlib_decompress
+from .utils import zlib_decompress, zlib_compress
 from .utils import decrypt
 from .utils import print_warning
+from .utils import round_to_int
+
+from IPython import embed
+
+from enum import Enum
 
 from binascii import hexlify
 from base64 import b64encode
@@ -35,6 +40,7 @@ import zlib
 import re
 
 from cryptography.hazmat.primitives.serialization import load_der_public_key
+from cryptography.hazmat.primitives.serialization import load_pem_public_key, load_pem_private_key
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.asymmetric import padding
 from cryptography.hazmat.primitives import hashes
@@ -110,7 +116,15 @@ class Entry(NestedBuffer):
 
     }
 
+    class Type(Enum):
+        NO_HDR_ENTRY = 1
+        PUBKEY = 2
+        NORMAL = 3
+
     class ParseError(Exception):
+        pass
+
+    class TypeError(Exception):
         pass
 
     @classmethod
@@ -119,7 +133,7 @@ class Entry(NestedBuffer):
         PUBKEY_ENTRY_TYPES = [ 0x0, 0x9, 0xa, 0x5, 0xd]
 
         # Types known to have no PSP HDR
-        # TODO: Find a better wat to identify those entries
+        # TODO: Find a better way to identify those entries
         NO_HDR_ENTRY_TYPES = [ 0x4, 0xb, 0x21, 0x40, 0x70, 0x30062, 0x6, 0x61, 0x60,
                                0x68, 0x100060, 0x100068, 0x5f, 0x15f, 0x1a, 0x22, 0x63,
                                0x67 , 0x66, 0x100066, 0x200066, 0x300066, 0x10062,
@@ -157,6 +171,68 @@ class Entry(NestedBuffer):
 
         return new_entry
 
+    @classmethod
+    def from_blob(cls, binary, id, type, compressed, signed, hdr=None, address=None, private_key=None):
+        if type == Entry.Type.PUBKEY:
+            print_warning(f"from_blob is not implemented for pubkeys")
+            pass
+        elif type == Entry.Type.NO_HDR_ENTRY:
+            print_warning(f"from_blob is not implemented for non-header objects")
+            pass
+        elif type == Entry.Type.NORMAL:
+            size = round_to_int(len(binary),0x10)
+            if compressed:
+                rom_data = zlib_compress(binary)
+                zlib_size = len(rom_data)
+                padded_size = round_to_int(zlib_size, 0x10)
+            else:
+                rom_data = binary
+                zlib_size = 0
+                padded_size = round_to_int(len(rom_data),0x10)
+
+            if signed:
+                # We reserve 0x200 for the signature, just in case we use a 4096 bit key.
+                total_size = padded_size + 0x200
+            else:
+                total_size = padded_size
+
+            # Add 0x100 for the header
+            total_size += 0x100
+
+            blob = NestedBuffer(bytearray(total_size), total_size)
+            if compressed:
+                padding_size = padded_size - zlib_size
+                blob[0x100:0x100 + zlib_size] = rom_data
+                blob[0x100 + zlib_size:0x100 + padded_size] = padding_size * b'\xff'
+            else:
+                print_warning("Not implemented yet")
+                pass
+
+            if compressed:
+                # Set compressed bit
+                blob[0x48:0x4c] = (1).to_bytes(4, 'little')
+                # Set size
+                blob[0x14:0x18] = (size).to_bytes(4, 'little')
+                # Set rom_size
+                blob[0x6c:0x70] = (total_size).to_bytes(4, 'little')
+                # Set zlib_size
+                blob[0x54:0x58] = (zlib_size).to_bytes(4, 'little')
+
+
+            entry = HeaderEntry(None, blob, id, total_size, 0x0, blob, "UNKNOWN", None)
+
+            entry.sign(private_key)
+            entry[-0x200:] = entry.signature
+            # if signed:
+            #     sig = private_key.sign(
+
+            return entry
+
+
+        else:
+            raise Entry.TypeError()
+
+
     def __init__(self, parent_directory, parent_buffer, type_, buffer_size, buffer_offset: int, blob):
         super().__init__(parent_buffer, buffer_size, buffer_offset=buffer_offset)
 
@@ -171,6 +247,8 @@ class Entry(NestedBuffer):
         self.signed = False
         self.encrypted = False
         self.is_legacy = False
+
+        self.raw_dir_entry = raw_dir_entry
 
         try:
             self._parse()
@@ -287,6 +365,7 @@ class PubkeyEntry(Entry):
 
 
 class HeaderEntry(Entry):
+
 
     HEADER_LEN = 0x100
 
@@ -486,23 +565,36 @@ class HeaderEntry(Entry):
             print(f"Get bytes failed at entry: 0x{self.get_address():x} type: {self.get_readable_type()} size: 0x{self.buffer_size:x}")
         return m.hexdigest()
 
+    def sign(self,private_key):
+        if self.compressed:
+            signed_data = self.get_decompressed()[:self.size_signed + self.header_len]
+        elif self.encrypted:
+            signed_data = self.get_decrypted()[:self.size_signed + self.header_len]
+        else:
+            signed_data = self.get_bytes()[:self.size_signed + self.header_len]
+
+        key = load_pem_private_key(private_key, password=None, backend=default_backend())
+
+        #TODO: Use SHA384 if the key is 4096 bits
+        try:
+            signature = key.sign(
+              signed_data,
+              padding.PSS(
+                  mgf=padding.MGF1(hashes.SHA384()),
+                  salt_length=48
+              ),
+              hashes.SHA384()
+            )
+        except:
+            print_warning("Signing exception")
+            return False
+
+        # Special fingerprint, denote that this entry was resigned with a custom key
+        self.signature_fingerprint = hexlify(4 * b'\xDE\xAD\xBE\xEF')
+        self.signature = signature
+        return True
+
     def verify_signature(self):
-        # if self.buffer_size == 0:
-        #     return False
-
-        # try:
-        #     pubkey: PubkeyEntry = self.blob.pubkeys[self.signature_fingerprint]
-        # except KeyError:
-        #     print_warning(f'Corresponding public key ({self.signature_fingerprint[:4]}) not found. '
-        #                                     f'Signature verification failed.')
-        #     return False
-
-        # signature_size = len(pubkey.modulus)
-
-        # if signature_size != 0x100:
-        #     print_warning('Signatures of other key length than 2048 bit are unsupported.')
-        #     return False
-
         # Note: This does not work if an entry was compressed AND encrypted.
         # However, we have not yet seen such entry.
 
@@ -521,7 +613,7 @@ class HeaderEntry(Entry):
             pubkey_der_encoded = self.pubkey.get_der_encoded()
         except AttributeError:
             print_warning(f"Entry {self.get_readable_type()} is signed, but corresponding pubkey was not found ({self.get_readable_signed_by()})")
-            return
+            return False
 
         crypto_pubkey = load_der_public_key(pubkey_der_encoded, backend=default_backend())
 
@@ -534,7 +626,7 @@ class HeaderEntry(Entry):
             salt_len = 48
         else:
             print_warning("Weird signature len")
-            return
+            return False
 
         try:
             crypto_pubkey.verify(

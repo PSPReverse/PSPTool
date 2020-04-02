@@ -120,6 +120,11 @@ def print_info(arg0, *nargs, **kwargs):
     arg0 = 'Info: ' + arg0 + '\n'
     sys.stderr.write(arg0, *nargs, **kwargs)
 
+def round_to_int(n, i):
+    if n % i:
+        return n + (i - n % i)
+    else:
+        return n
 
 def chunker(seq, size):
     """ Utility function to chunk seq into a list of size sized sequences. """
@@ -182,6 +187,8 @@ def zlib_find_header(s):
 
     return -1
 
+def zlib_compress(s):
+    return zlib.compress(s,9)
 
 def zlib_decompress(s):
     """ Checks s for the first appearance of a zlib header and returns the uncompressed start of s as well as the
