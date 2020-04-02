@@ -49,29 +49,31 @@ class PSPTool:
             f.write(self.blob.get_buffer())
 
     def ls(self, verbose=False):
-        for index, directory in enumerate(self.blob.directories):
-            t = PrettyTable(['Directory', 'Addr', 'Type', 'Magic', 'Secondary Directory'])
-            t.add_row([
-                index,
-                hex(directory.get_address()),
-                directory.type,
-                directory.magic.decode('utf-8', 'backslashreplace'),
-                hex(directory.secondary_directory_address) if directory.secondary_directory_address else '--'
-            ])
+        for fet in self.blob.fets:
+            for index, directory in enumerate(fet.directories):
+                t = PrettyTable(['Directory', 'Addr', 'Type', 'Magic', 'Secondary Directory'])
+                t.add_row([
+                    index,
+                    hex(directory.get_address()),
+                    directory.type,
+                    directory.magic.decode('utf-8', 'backslashreplace'),
+                    hex(directory.secondary_directory_address) if directory.secondary_directory_address else '--'
+                ])
 
-            print(t)
+                print(t)
 
-            self.ls_dir(index, verbose=verbose)
-            print('\n')
+                self.ls_dir(index, verbose=verbose)
+                print('\n')
 
     def ls_dir(self, directory_index, verbose=False):
-        directory = self.blob.directories[directory_index]
-        self.ls_entries(entries=directory.entries, verbose=verbose)
+        for fet in self.blob.fets:
+            directory = fet.directories[directory_index]
+            self.ls_entries(entries=directory.entries, verbose=verbose)
 
     def ls_entries(self, entries=None, verbose=False):
         # list all entries of all directories by default (sorted by their address)
         if entries is None:
-            entries = sorted(self.blob.unique_entries)
+            entries = sorted(self.blob.get_unique_entries())
 
         basic_fields = [' ', 'Entry', 'Address', 'Size', 'Type', 'Magic/ID', 'Version', 'Info']
         verbose_fields = ['MD5', 'size_signed', 'size_full', 'size_packed']

@@ -114,7 +114,7 @@ class Entry(NestedBuffer):
         pass
 
     @classmethod
-    def from_fields(cls, parent_directory, parent_buffer, type_, size, offset, blob, agesa_version):
+    def from_fields(cls, parent_directory, parent_buffer, type_, size, offset, blob):
         # Try to parse these ID's as a key entry
         PUBKEY_ENTRY_TYPES = [ 0x0, 0x9, 0xa, 0x5, 0xd]
 
@@ -135,7 +135,7 @@ class Entry(NestedBuffer):
         if type_ in NO_HDR_ENTRY_TYPES:
             # Option 1: it's a plain Entry
             try:
-                new_entry = Entry(parent_directory, parent_buffer, type_, size, buffer_offset=offset, blob=blob, agesa_version=agesa_version)
+                new_entry = Entry(parent_directory, parent_buffer, type_, size, buffer_offset=offset, blob=blob)
             except:
                 print_warning(f"Couldn't parse plain entry: 0x{type_:x}")
 
@@ -143,7 +143,7 @@ class Entry(NestedBuffer):
             # Option 2: it's a PubkeyEntry
 
             try:
-                new_entry = PubkeyEntry(parent_directory, parent_buffer, type_, size, buffer_offset=offset, blob=blob,agesa_version=agesa_version)
+                new_entry = PubkeyEntry(parent_directory, parent_buffer, type_, size, buffer_offset=offset, blob=blob)
             except:
                 print_warning(f"Couldn't parse pubkey entry 0x{type_:x}")
         else:
@@ -151,13 +151,13 @@ class Entry(NestedBuffer):
             if size == 0:
                 # If the size in the directory is zero, set the size to hdr len
                 size = HeaderEntry.HEADER_LEN
-            new_entry = HeaderEntry(parent_directory, parent_buffer, type_, size, buffer_offset=offset, blob=blob, agesa_version=agesa_version)
+            new_entry = HeaderEntry(parent_directory, parent_buffer, type_, size, buffer_offset=offset, blob=blob)
             if size == 0:
                 print_warning(f"Entry with zero size. Type: {type_}. Dir: 0x{offset:x}")
 
         return new_entry
 
-    def __init__(self, parent_directory, parent_buffer, type_, buffer_size, buffer_offset: int, blob, agesa_version):
+    def __init__(self, parent_directory, parent_buffer, type_, buffer_size, buffer_offset: int, blob):
         super().__init__(parent_buffer, buffer_size, buffer_offset=buffer_offset)
 
         # TODO: Fix to reference of FET
@@ -166,7 +166,6 @@ class Entry(NestedBuffer):
         self.references = [parent_directory]
         self.parent_directory = parent_directory
 
-        self.agesa_version = agesa_version
 
         self.compressed = False
         self.signed = False

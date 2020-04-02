@@ -17,7 +17,7 @@
 import re
 import struct
 
-from typing import List
+from typing import List, Set
 
 from .utils import NestedBuffer, chunker, print_warning
 from .firmware import Firmware
@@ -37,11 +37,8 @@ class Blob(NestedBuffer):
         super().__init__(buffer, size)
 
         self.psptool = psptool
-        self.directories: List[Directory] = []
-        self.firmwares: List[Firmware] = []
         self.raw_blob = buffer
 
-        self.unique_entries = set()
         self.pubkeys = {}
         self.fets = []
 
@@ -49,13 +46,8 @@ class Blob(NestedBuffer):
 
         self._find_entry_table()
 
-        # todo: info members:
-        #  self.range = (min, max)
-
     def __repr__(self):
-        return f'Blob(agesa_version={self.agesa_version}, len(firmwares)={len(self.firmwares)}, ' \
-               f'len(directories)={len(self.directories)})'
-
+        return f'Blob(agesa_version={self.agesa_version})'
     def _parse_agesa_version(self):
         # from https://www.amd.com/system/files/TechDocs/44065_Arch2008.pdf
 
@@ -73,15 +65,9 @@ class Blob(NestedBuffer):
         if len(res) == 2:
             self.dual_rom = True
             self.agesa_version_second = str(re.sub(b'\x00',b' ',res[1]).strip().decode("ascii"))
-        else:
-            self.dual_rom = False
-
-        # Fail if we find more than two AGESA versions strings.
-        assert(len(res) <= 2)
-
-        # TODO: Handle the case where there are multiple matches
-        if len(res) >= 1:
+        elif len(res) == 1:
             self.agesa_version = str(re.sub(b'\x00',b' ',res[0]).strip().decode("ascii"))
+            self.dual_rom = False
         else:
             self.agesa_version = str("UNKNOWN")
 
@@ -120,7 +106,7 @@ class Blob(NestedBuffer):
                 else:
                     continue
                 try:
-                    entry = PubkeyEntry(self,self, '99', size, start, self, "Agesa version unknown")
+                    entry = PubkeyEntry(self,self, '99', size, start, self)
                     self.pubkeys[entry.key_id] = entry
                 except Entry.ParseError:
                     print(f"_find_pubkey: Entry parse error at 0x{start:x}")
@@ -130,8 +116,23 @@ class Blob(NestedBuffer):
     def get_entries_by_type(self, type_) -> List[Entry]:
         entries = []
 
-        for entry in self.unique_entries:
-            if entry.type == type_:
-                entries.append(entry)
+        for fet in self.fets:
+            for dir in fet.directories:
+                for entry in dir:
+                    if entry.type == type:
+                        entries.append(entry)
 
         return entries
+
+
+    def get_unique_entries(self) -> Set[Entry]:
+
+        unique_entries = set()
+        for fet in self.fets:
+            for dir in fet.directories:
+                for entry in dir:
+                    unique_entries.add(entry)
+
+
+        return unique_entries
+

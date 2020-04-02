@@ -25,12 +25,13 @@ from binascii import hexlify
 class Fet(NestedBuffer):
     def __init__(self, parent_buffer, fet_offset: int, agesa_version):
 
+        # The nested buffer that represents the whole binary
         self.blob = parent_buffer
 
-        self.parent_buffer = parent_buffer
         self.fet_offset = fet_offset
 
         self.agesa_version = agesa_version
+        self.directories: List[Directory] = []
 
         self._determine_size()
         self._determine_rom()
@@ -45,8 +46,8 @@ class Fet(NestedBuffer):
 
     def _determine_size(self):
         size = 0
-        while self.fet_offset <= len(self.get_buffer()) - 4:
-            if self.get_buffer()[(self.fet_offset + size):(self.fet_offset + size + 4)] != b'\xff\xff\xff\xff':
+        while self.fet_offset <= len(self.blob) - 4:
+            if self.blob[(self.fet_offset + size):(self.fet_offset + size + 4)] != b'\xff\xff\xff\xff':
                 size += 4
             else:
                 break
@@ -65,10 +66,10 @@ class Fet(NestedBuffer):
             # TODO: Better warning
             # print_warning("Weird PSP Combo directory. Please report this")
             return
-        dir = Directory(self, addr, type, self.blob, self.agesa_version)
-        self.blob.directories.append(dir)
+        dir = Directory(self, addr, type, self.blob)
+        self.directories.append(dir)
         if dir.secondary_directory_address is not None:
-            self.blob.directories.append(Directory(self, dir.secondary_directory_address, 'secondary', self.blob, self.agesa_version))
+            self.directories.append(Directory(self, dir.secondary_directory_address, 'secondary', self.blob))
 
 
 

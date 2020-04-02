@@ -40,14 +40,14 @@ class Directory(NestedBuffer):
 
     _ENTRY_TYPES_SECONDARY_DIR = [0x40, 0x70]
 
-    def __init__(self, parent_buffer, buffer_offset: int, type_: str, blob, agesa_version):
+    def __init__(self, parent_buffer, buffer_offset: int, type_: str, blob):
         self.parent_buffer = parent_buffer
+
+        # The offset of this directory as specified in the FET
         self.buffer_offset = buffer_offset
 
         self.blob = blob
-        self.fet = parent_buffer
-
-        self.agesa_version = agesa_version
+        self.fet = parent_buffer.fet
 
         self.checksum = None
         self._count = None
@@ -90,7 +90,7 @@ class Directory(NestedBuffer):
 
     def _parse_header(self):
         # ugly to do this manually, but we do not know our size yet
-        self._count = struct.unpack('<I', self.parent_buffer.get_bytes(self.buffer_offset + 8, 4))[0]
+        self._count = int.from_bytes(self.parent_buffer[self.buffer_offset + 8: self.buffer_offset + 12], 'little')
         self.magic = self.parent_buffer.get_bytes(self.buffer_offset, 4)
 
         self.header = NestedBuffer(self, self._HEADER_SIZES[self.magic])
@@ -118,7 +118,7 @@ class Directory(NestedBuffer):
                                           entry_fields['type'],
                                           entry_fields['size'],
                                           entry_fields['offset'],
-                                          self.blob, self.agesa_version)
+                                          self.blob)
                 if isinstance(entry, PubkeyEntry):
                     self.blob.pubkeys[entry.key_id] = entry
                 else:
@@ -142,13 +142,12 @@ class Directory(NestedBuffer):
                                       entry_fields['type'],
                                       entry_fields['size'],
                                       entry_fields['offset'],
-                                      self.blob, self.agesa_version)
+                                      self.blob)
 
-            for existing_entry in self.blob.unique_entries:
+            for existing_entry in self.blob.get_unique_entries():
                 if entry == existing_entry:
                     existing_entry.references.append(self)
 
-            self.blob.unique_entries.add(entry)
             self.entries.append(entry)
 
     def update_checksum(self):
