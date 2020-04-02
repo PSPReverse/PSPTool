@@ -144,11 +144,12 @@ class Directory(NestedBuffer):
                                       entry_fields['offset'],
                                       self.blob)
 
-            for existing_entry in self.blob.get_unique_entries():
+            for existing_entry in self.blob.unique_entries:
                 if entry == existing_entry:
                     existing_entry.references.append(self)
 
             self.entries.append(entry)
+            self.blob.unique_entries.add(entry)
 
     def update_checksum(self):
         data = self[0x8:]  # checksum is calculated from after the checksum field in the header

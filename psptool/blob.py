@@ -41,6 +41,7 @@ class Blob(NestedBuffer):
 
         self.pubkeys = {}
         self.fets = []
+        self.unique_entries = set()
 
         self._parse_agesa_version()
 
@@ -48,6 +49,7 @@ class Blob(NestedBuffer):
 
     def __repr__(self):
         return f'Blob(agesa_version={self.agesa_version})'
+
     def _parse_agesa_version(self):
         # from https://www.amd.com/system/files/TechDocs/44065_Arch2008.pdf
 
@@ -64,6 +66,7 @@ class Blob(NestedBuffer):
         # one for Rome. Both will contain a valid FET which needs to be parsed.
         if len(res) == 2:
             self.dual_rom = True
+            self.agesa_version = str(re.sub(b'\x00',b' ',res[0]).strip().decode("ascii"))
             self.agesa_version_second = str(re.sub(b'\x00',b' ',res[1]).strip().decode("ascii"))
         elif len(res) == 1:
             self.agesa_version = str(re.sub(b'\x00',b' ',res[0]).strip().decode("ascii"))
@@ -125,14 +128,14 @@ class Blob(NestedBuffer):
         return entries
 
 
-    def get_unique_entries(self) -> Set[Entry]:
+    # def get_unique_entries(self) -> Set[Entry]:
 
-        unique_entries = set()
-        for fet in self.fets:
-            for dir in fet.directories:
-                for entry in dir:
-                    unique_entries.add(entry)
+    #     unique_entries = set()
+    #     for fet in self.fets:
+    #         for dir in fet.directories:
+    #             for entry in dir:
+    #                 unique_entries.add(entry)
 
 
-        return unique_entries
+    #     return unique_entries
 
