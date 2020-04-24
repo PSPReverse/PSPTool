@@ -346,7 +346,7 @@ def find_read_accesses(data):
     read_accesses = {}
 
     # use psptool to correlate addresses to firmware directory entries
-    directories = psptool.blob.directories
+    directories = psptool.blob.fets[0].directories
     directory_entries = [directory.entries for directory in directories]
 
     # flatten list of lists

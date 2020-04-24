@@ -127,15 +127,3 @@ class Blob(NestedBuffer):
 
         return entries
 
-
-    # def get_unique_entries(self) -> Set[Entry]:
-
-    #     unique_entries = set()
-    #     for fet in self.fets:
-    #         for dir in fet.directories:
-    #             for entry in dir:
-    #                 unique_entries.add(entry)
-
-
-    #     return unique_entries
-
