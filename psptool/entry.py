@@ -192,38 +192,50 @@ class Entry(NestedBuffer):
                 padded_size = round_to_int(len(rom_data),0x10)
 
             if signed:
-                # We reserve 0x200 for the signature, just in case we use a 4096 bit key.
-                total_size = padded_size + 0x200
+                if private_key != None:
+                    private_key = load_pem_private_key(private_key,password=None,backend=default_backend())
+                    sig_len = private_key.key_size // 8
+                else:
+                    # We reserve 0x200 for the signature, just in case we use a 4096 bit key.
+                    sig_len = 0x200
+                total_size = padded_size + sig_len
             else:
                 total_size = padded_size
 
             # Add 0x100 for the header
             total_size += 0x100
 
-            blob = NestedBuffer(bytearray(total_size), total_size)
             if compressed:
                 padding_size = padded_size - zlib_size
+                total_size += padding_size
+                blob = NestedBuffer(bytearray(total_size), total_size)
                 blob[0x100:0x100 + zlib_size] = rom_data
                 blob[0x100 + zlib_size:0x100 + padded_size] = padding_size * b'\xff'
             else:
-                print_warning("Not implemented yet")
-                pass
+                padding_size = padded_size - len(rom_data)
+                total_size += padding_size
+                blob = NestedBuffer(bytearray(total_size), total_size)
+                blob[0x100:0x100 + len(rom_data)] = rom_data
+                blob[0x100 + len(rom_data):0x100 + padded_size] = padded_size * b'\xff'
 
+
+            # Set compressed bit
             if compressed:
-                # Set compressed bit
                 blob[0x48:0x4c] = (1).to_bytes(4, 'little')
-                # Set size
-                blob[0x14:0x18] = (size).to_bytes(4, 'little')
-                # Set rom_size
-                blob[0x6c:0x70] = (total_size).to_bytes(4, 'little')
+            # Set size
+            blob[0x14:0x18] = (size).to_bytes(4, 'little')
+            # Set rom_size
+            blob[0x6c:0x70] = (total_size).to_bytes(4, 'little')
+            if compressed:
                 # Set zlib_size
                 blob[0x54:0x58] = (zlib_size).to_bytes(4, 'little')
 
 
-            entry = HeaderEntry(None, blob, id, total_size, 0x0, blob, "UNKNOWN", None)
+            entry = HeaderEntry(None, blob, id, total_size, 0x0, blob)
 
-            entry.sign(private_key)
-            entry[-0x200:] = entry.signature
+            if signed and private_key != None:
+                entry.sign(private_key)
+                entry[-0x200:] = entry.signature
             # if signed:
             #     sig = private_key.sign(
 
@@ -249,7 +261,6 @@ class Entry(NestedBuffer):
         self.encrypted = False
         self.is_legacy = False
 
-        self.raw_dir_entry = raw_dir_entry
 
         try:
             self._parse()
@@ -570,21 +581,30 @@ class HeaderEntry(Entry):
         if self.compressed:
             signed_data = self.get_decompressed()[:self.size_signed + self.header_len]
         elif self.encrypted:
-            signed_data = self.get_decrypted()[:self.size_signed + self.header_len]
+            print_warning(f'Signing encrypted entries is not supported yet')
+            return False
         else:
-            signed_data = self.get_bytes()[:self.size_signed + self.header_len]
+            signed_data = self[:self.size_signed + self.header_len]
 
-        key = load_pem_private_key(private_key, password=None, backend=default_backend())
 
-        #TODO: Use SHA384 if the key is 4096 bits
+        if private_key.key_size == 2048 :
+            hash = hashes.SHA256()
+            salt_length = 32
+        elif private_key.key_size == 4096:
+            hash = hashes.SHA384()
+            salt_length = 48
+        else:
+            print_warning(f"Unknown key_size: {private_key.key_size}")
+            return False
+
         try:
-            signature = key.sign(
+            signature = private_key.sign(
               signed_data,
               padding.PSS(
-                  mgf=padding.MGF1(hashes.SHA384()),
-                  salt_length=48
+                  mgf=padding.MGF1(hash),
+                  salt_length=salt_length
               ),
-              hashes.SHA384()
+              hash
             )
         except:
             print_warning("Signing exception")
