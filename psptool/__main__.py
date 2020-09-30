@@ -23,7 +23,6 @@ from .entry import PubkeyEntry, HeaderEntry
 
 from argparse import RawTextHelpFormatter, SUPPRESS
 
-
 def main():
     # CLI stuff to create a PSPTool object and interact with it
     parser = ObligingArgumentParser(description='Display, extract, and manipulate AMD PSP firmware inside BIOS ROMs.\n',
@@ -41,6 +40,7 @@ def main():
     parser.add_argument('-c', '--decrypt', help=SUPPRESS, action='store_true')
     parser.add_argument('-k', '--pem-key', help=SUPPRESS, action='store_true')
     parser.add_argument('-n', '--no-duplicates', help=SUPPRESS, action='store_true')
+    parser.add_argument('-j', '--json', help=SUPPRESS, action='store_true')
 
     action = parser.add_mutually_exclusive_group(required=False)
 
@@ -49,6 +49,7 @@ def main():
         '[-n]',
         '',
         '-n:      list unique entries only ordered by their offset',
+        '-j:      output in JSON format instead of tables',
         '', '']), action='store_true')
 
     action.add_argument('-X', '--extract-entry', help='\n'.join([
@@ -162,8 +163,9 @@ def main():
     else:
         if args.verbose:
             print(psp.blob.agesa_version)
-
-        if args.no_duplicates:
+        if args.json:
+            psp.ls_json(verbose=args.verbose)
+        elif args.no_duplicates:
             psp.ls_entries(verbose=args.verbose)
         else:
             psp.ls(verbose=args.verbose)

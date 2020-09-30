@@ -15,6 +15,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from prettytable import PrettyTable
+import json
 
 from .entry import HeaderEntry
 from .blob import Blob
@@ -122,3 +123,68 @@ class PSPTool:
             fields += verbose_fields
 
         print(t.get_string(fields=fields))
+
+    def ls_json(self, verbose=False):
+        data = []
+        for fet in self.blob.fets:
+            for index, directory in enumerate(fet.directories):
+                t = PrettyTable(['Directory', 'Addr', 'Type', 'Magic', 'Secondary Directory'])
+                d = {
+                    'directory': index,
+                    'address': directory.get_address(),
+                    'directoryType': directory.type,
+                    'magic': directory.magic.decode('utf-8', 'backslashreplace'),
+                }
+                if directory.secondary_directory_address:
+                    d['secondaryAddress'] = directory.secondary_directory_address
+
+                entries = self.ls_dir_dict(fet, index, verbose=verbose)
+                d['entries'] = entries
+                data.append(d)
+        print(json.dumps(data))
+
+    def ls_dir_dict(self, fet,  directory_index, verbose=False):
+        directory = fet.directories[directory_index]
+        return self.ls_entries_dict(entries=directory.entries, verbose=verbose)
+
+    def ls_entries_dict(self, entries=None, verbose=False):
+        # list all entries of all directories by default (sorted by their address)
+        if entries is None:
+            entries = sorted(self.blob.unique_entries)
+
+        out = []
+        for index, entry in enumerate(entries):
+            info = []
+            if entry.compressed:
+                info.append('compressed')
+            if entry.signed:
+                info.append('signed(%s)' % entry.get_readable_signed_by())
+                if entry.verify_signature():
+                    info.append('verified')
+            if entry.is_legacy:
+                info.append('legacy Header')
+            if entry.encrypted:
+                info.append('encrypted')
+
+            all_values = {
+                'index': index,
+                'address': entry.get_address(),
+                'size': entry.buffer_size,
+                'sectionType': entry.get_readable_type(),
+                'magic': entry.get_readable_magic(),
+                'version': entry.get_readable_version(),
+                'info': info,
+                'md5': entry.md5()[:4].upper()
+            }
+
+            if type(entry) is HeaderEntry:
+                sizes = {
+                    'signed': entry.size_signed,
+                    'uncompressed': entry.size_uncompressed,
+                    'packed': entry.rom_size
+                }
+                all_values['sizes'] = sizes
+
+            out.append(all_values)
+
+        return out
