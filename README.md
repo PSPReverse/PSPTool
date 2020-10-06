@@ -141,6 +141,7 @@ optional arguments:
                        [-n]
 
                        -n:      list unique entries only ordered by their offset
+                       -j:      output in JSON format instead of tables
 
   -X, --extract-entry  Extract one or more PSP firmware entries.
                        [-d idx [-e idx]] [-n] [-u] [-c] [-k] [-o outfile]
