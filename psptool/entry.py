@@ -112,6 +112,7 @@ class Entry(NestedBuffer):
         0x15f: '!FW_PSP_SMUSCS_2',  # seems to be a secondary FW_PSP_SMUSCS (see above)
         0x112: '!SMU_OFF_CHIP_FW_3',  # seems to tbe a tertiary SMU image (see above)
         0x39: '!SEV_APP',
+        0x10062: '!UEFI-IMAGE',
         0x30062: '!UEFI-IMAGE'
 
     }
