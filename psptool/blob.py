@@ -15,13 +15,10 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import re
-import struct
 
-from typing import List, Set
+from typing import List
 
-from .utils import NestedBuffer, chunker, print_warning
-from .firmware import Firmware
-from .directory import Directory
+from .utils import NestedBuffer, print_warning
 from .entry import Entry, PubkeyEntry
 from .fet import Fet
 
@@ -43,6 +40,7 @@ class Blob(NestedBuffer):
         self.fets = []
         self.unique_entries = set()
 
+        self.dual_rom = False
         self._parse_agesa_version()
 
         self._find_entry_table()
@@ -66,15 +64,12 @@ class Blob(NestedBuffer):
         # one for Rome. Both will contain a valid FET which needs to be parsed.
         if len(res) == 2:
             self.dual_rom = True
-            self.agesa_version = str(re.sub(b'\x00',b' ',res[0]).strip().decode("ascii"))
-            self.agesa_version_second = str(re.sub(b'\x00',b' ',res[1]).strip().decode("ascii"))
+            self.agesa_version = str(re.sub(b'\x00', b' ', res[0]).strip().decode("ascii"))
+            self.agesa_version_second = str(re.sub(b'\x00', b' ', res[1]).strip().decode("ascii"))
         elif len(res) == 1:
-            self.agesa_version = str(re.sub(b'\x00',b' ',res[0]).strip().decode("ascii"))
-            self.dual_rom = False
+            self.agesa_version = str(re.sub(b'\x00', b' ', res[0]).strip().decode("ascii"))
         else:
             self.agesa_version = str("UNKNOWN")
-
-
 
     def _find_entry_table(self):
         # AA55AA55 is to unspecific, so we require a word of padding before (to be tested)
@@ -90,16 +85,15 @@ class Blob(NestedBuffer):
             else:
                 print_warning(f"Found two AGESA versions strings, but only one firmware entry table")
 
-
-    def find_pubkey(self,fp):
+    def find_pubkey(self, fp):
         """ Try to find a pubkey anywhere in the blob.
-        The pubkey is identified by it's fingerprint. If found, the pubkey is
+        The pubkey is identified by its fingerprint. If found, the pubkey is
         added to the list of pubkeys of the blob """
         m = re.finditer(re.escape(fp), self.raw_blob)
         for index in m:
             start = index.start() - 4
             if int.from_bytes(self.raw_blob[start:start+4], 'little') == 1:
-                # Maybe a pubkey. Determine it's size:
+                # Maybe a pubkey. Determine its size:
                 pub_exp_size = int.from_bytes(self.raw_blob[start + 0x38: start + 0x3c],
                                               'little')
                 if pub_exp_size == 2048:
@@ -109,21 +103,20 @@ class Blob(NestedBuffer):
                 else:
                     continue
                 try:
-                    entry = PubkeyEntry(self,self, '99', size, start, self)
+                    entry = PubkeyEntry(self, self, '99', size, start, self)
                     self.pubkeys[entry.key_id] = entry
                 except Entry.ParseError:
                     print(f"_find_pubkey: Entry parse error at 0x{start:x}")
                 except:
-                    print_warning(f"Error couldn't convert key at: {start:x}")
+                    print_warning(f"Error couldn't convert key at: 0x{start:x}")
 
-    def get_entries_by_type(self, type_) -> List[Entry]:
+    def get_entries_by_type(self) -> List[Entry]:
         entries = []
 
         for fet in self.fets:
-            for dir in fet.directories:
-                for entry in dir:
+            for _dir in fet.directories:
+                for entry in _dir:
                     if entry.type == type:
                         entries.append(entry)
 
         return entries
-
