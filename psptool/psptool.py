@@ -66,6 +66,17 @@ class PSPTool:
                 self.ls_dir(fet, index, verbose=verbose)
                 print('\n')
 
+        self.ls_keys(verbose=verbose)
+
+
+    def ls_keys(self, verbose=False):
+        print("Keys:")
+        pubkeys = list()
+        for pks in self.blob.pubkeys.values():
+            pubkeys += pks
+        self.ls_entries(pubkeys, verbose=verbose)
+        print('\n')
+
     def ls_dir(self, fet,  directory_index, verbose=False):
         directory = fet.directories[directory_index]
         self.ls_entries(entries=directory.entries, verbose=verbose)

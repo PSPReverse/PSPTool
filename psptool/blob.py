@@ -15,6 +15,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import re
+import binascii
 
 from typing import List
 
@@ -85,11 +86,28 @@ class Blob(NestedBuffer):
             else:
                 print_warning(f"Found two AGESA versions strings, but only one firmware entry table")
 
-    def find_pubkey(self, fp):
+    def all_pubkeys(self):
+        return sum(self.pubkeys.values(), start=list())
+
+    def get_pubkeys(self, key_id):
+        if not self.pubkeys.get(key_id):
+            self.pubkeys[key_id] = list(self._find_pubkeys(key_id))
+        return self.pubkeys[key_id]
+
+    def add_pubkey(self, pubkey_entry):
+        if not self.pubkeys.get(pubkey_entry.key_id):
+            self.pubkeys[pubkey_entry.key_id] = list(self._find_pubkeys(pubkey_entry.key_id))
+
+        keys = self.pubkeys[pubkey_entry.key_id]
+        keys = list(filter(lambda k: k.type != 0xdead or k.get_address() != pubkey_entry.get_address(), keys))
+        keys.append(pubkey_entry)
+        self.pubkeys[pubkey_entry.key_id] = keys
+
+    def _find_pubkeys(self, fp):
         """ Try to find a pubkey anywhere in the blob.
         The pubkey is identified by its fingerprint. If found, the pubkey is
         added to the list of pubkeys of the blob """
-        m = re.finditer(re.escape(fp), self.raw_blob)
+        m = re.finditer(re.escape(binascii.a2b_hex(fp)), self.raw_blob)
         for index in m:
             start = index.start() - 4
             if int.from_bytes(self.raw_blob[start:start+4], 'little') == 1:
@@ -102,11 +120,20 @@ class Blob(NestedBuffer):
                     size = 0x440
                 else:
                     continue
+                
+                key_id = self.raw_blob[start + 0x04: start + 0x14]
+                cert_id = self.raw_blob[start + 0x14: start + 0x24]
+
+                if key_id != cert_id and cert_id != b'\0'*0x10:
+                    if pub_exp_size == 2048:
+                        size += 0x100
+                    else:
+                        size += 0x200
+
                 try:
-                    entry = PubkeyEntry(self, self, '99', size, start, self)
-                    self.pubkeys[entry.key_id] = entry
+                    yield PubkeyEntry(self, self, 0xdead, size, start, self)
                 except Entry.ParseError:
-                    print(f"_find_pubkey: Entry parse error at 0x{start:x}")
+                    print_warning(f"_find_pubkey: Entry parse error at 0x{start:x}")
                 except:
                     print_warning(f"Error couldn't convert key at: 0x{start:x}")
 
