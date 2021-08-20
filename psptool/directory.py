@@ -145,6 +145,10 @@ class Directory(NestedBuffer):
                                       entry_fields['size'],
                                       entry_fields['offset'],
                                       self.blob)
+                                      
+            if entry is None:
+                print_warning(f"Entry @ {entry_fields['offset']} of size {entry_fields['size']} of type {entry_fields['type']} couldn't be parsed")
+                continue
 
             for existing_entry in self.blob.unique_entries:
                 if entry == existing_entry:
