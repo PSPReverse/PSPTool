@@ -162,7 +162,7 @@ class Entry(NestedBuffer):
                 new_entry = PubkeyEntry(parent_directory, parent_buffer, type_, size, buffer_offset=offset, blob=blob)
             except:
                 print_warning(f"Couldn't parse pubkey entry 0x{type_:x}")
-        else:
+        if new_entry is None:
             # Option 3: it's a HeaderEntry (most common)
             if size == 0:
                 # If the size in the directory is zero, set the size to hdr len
