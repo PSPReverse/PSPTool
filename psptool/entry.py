@@ -253,7 +253,7 @@ class Entry(NestedBuffer):
         # TODO: Fix to reference of FET
         self.blob = blob
         self.type = type_
-        self.references = [parent_directory]
+        self.references = [parent_directory] if parent_directory is not None else []
         self.parent_directory = parent_directory
 
 
