@@ -17,14 +17,19 @@
 import struct
 
 from .utils import NestedBuffer, chunker, fletcher32, print_warning
-from .entry import Entry, PubkeyEntry
+from .entry import Entry, PubkeyEntry, BIOS_ENTRY_TYPES
 
 from typing import List
 
-from IPython import embed
-
 class Directory(NestedBuffer):
-    ENTRY_FIELDS = ['type', 'size', 'offset', 'rsv0', 'rsv1', 'rsv2']
+    ENTRY_FIELDS = [
+        'type',
+        'size',
+        'offset',
+        'rsv0',
+        'rsv1',
+        'rsv2'
+    ]
 
     _HEADER_SIZES = {
         b'$PSP': 4 * 4,
@@ -92,12 +97,21 @@ class Directory(NestedBuffer):
 
     def _parse_header(self):
         # ugly to do this manually, but we do not know our size yet
-        self._count = int.from_bytes(self.parent_buffer[self.buffer_offset + 8: self.buffer_offset + 12], 'little')
+        self._count = int.from_bytes(
+            self.parent_buffer[self.buffer_offset + 8: self.buffer_offset + 12],
+            'little'
+        )
         self.magic = self.parent_buffer.get_bytes(self.buffer_offset, 4)
 
-        self.header = NestedBuffer(self, self._HEADER_SIZES[self.magic])
-        self.body = NestedBuffer(self, self._ENTRY_SIZES[self.magic] * self._count,
-                                 buffer_offset=self._HEADER_SIZES[self.magic])
+        self.header = NestedBuffer(
+            self,
+            self._HEADER_SIZES[self.magic]
+        )
+        self.body = NestedBuffer(
+            self,
+            self._ENTRY_SIZES[self.magic] * self._count,
+            buffer_offset=self._HEADER_SIZES[self.magic]
+        )
 
         self.buffer_size = len(self.header) + len(self.body)
         self.checksum = NestedBuffer(self, 4, 4)
@@ -120,6 +134,7 @@ class Directory(NestedBuffer):
                                           entry_fields['type'],
                                           entry_fields['size'],
                                           entry_fields['offset'],
+                                          None, # not applicable
                                           self.blob)
                 if isinstance(entry, PubkeyEntry):
                     self.blob.pubkeys[entry.key_id] = entry
@@ -139,11 +154,16 @@ class Directory(NestedBuffer):
             #  -> some ROMs are 8 MB in size, so addresses are starting at 0xFF800000
             # if len(self.blob) == 0x800000:
             #     entry_fields['offset'] &= 0x7FFFFF
+            destination = None
+
+            if entry_fields['type'] in BIOS_ENTRY_TYPES:
+                destination = struct.unpack('<Q', entry_bytes[0x10:0x18])[0]
 
             entry = Entry.from_fields(self, self.parent_buffer,
                                       entry_fields['type'],
                                       entry_fields['size'],
                                       entry_fields['offset'],
+                                      destination,
                                       self.blob)
 
             for existing_entry in self.blob.unique_entries:
@@ -169,6 +189,10 @@ class Directory(NestedBuffer):
         # update type, size, offset, but not rsv0, rsv1 and rsv2
         offset |= 0xFF000000
         entry_bytes = b''.join([struct.pack('<I', value) for value in [type_, size, offset]])
-        self.body.set_bytes(self._ENTRY_SIZES[self.magic] * entry_index, 4 * 3, entry_bytes)
+        self.body.set_bytes(
+            self._ENTRY_SIZES[self.magic] * entry_index,
+            4 * 6,
+            entry_bytes
+        )
 
         self.update_checksum()

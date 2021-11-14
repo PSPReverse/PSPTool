@@ -177,6 +177,9 @@ class PSPTool:
                 'md5': entry.md5()[:4].upper()
             }
 
+            if entry.get_readable_type() == "BIOS":
+                all_values['destinationAddress'] = entry.get_readable_destination_address()
+
             if type(entry) is HeaderEntry:
                 sizes = {
                     'signed': entry.size_signed,

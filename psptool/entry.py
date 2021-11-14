@@ -46,6 +46,7 @@ from cryptography.hazmat.primitives.asymmetric import padding
 from cryptography.hazmat.primitives import hashes
 from cryptography.exceptions import InvalidSignature
 
+BIOS_ENTRY_TYPES = [ 0x10062, 0x30062]
 
 class Entry(NestedBuffer):
     ENTRY_ALIGNMENT = 0x100
@@ -129,7 +130,7 @@ class Entry(NestedBuffer):
         pass
 
     @classmethod
-    def from_fields(cls, parent_directory, parent_buffer, type_, size, offset, blob):
+    def from_fields(cls, parent_directory, parent_buffer, type_, size, offset, destination, blob):
         # Try to parse these ID's as a key entry
         PUBKEY_ENTRY_TYPES = [ 0x0, 0x9, 0xa, 0x5, 0xd]
 
@@ -151,7 +152,15 @@ class Entry(NestedBuffer):
         if type_ in NO_HDR_ENTRY_TYPES:
             # Option 1: it's a plain Entry
             try:
-                new_entry = Entry(parent_directory, parent_buffer, type_, size, buffer_offset=offset, blob=blob)
+                new_entry = Entry(
+                    parent_directory,
+                    parent_buffer,
+                    type_,
+                    size,
+                    buffer_offset=offset,
+                    destination=destination,
+                    blob=blob
+                )
             except:
                 print_warning(f"Couldn't parse plain entry: 0x{type_:x}")
 
@@ -167,7 +176,7 @@ class Entry(NestedBuffer):
             if size == 0:
                 # If the size in the directory is zero, set the size to hdr len
                 size = HeaderEntry.HEADER_LEN
-            new_entry = HeaderEntry(parent_directory, parent_buffer, type_, size, buffer_offset=offset, blob=blob)
+            new_entry = HeaderEntry(parent_directory, parent_buffer, type_, size, buffer_offset=offset, destination=None, blob=blob)
             if size == 0:
                 print_warning(f"Entry with zero size. Type: {type_}. Dir: 0x{offset:x}")
 
@@ -247,12 +256,13 @@ class Entry(NestedBuffer):
             raise Entry.TypeError()
 
 
-    def __init__(self, parent_directory, parent_buffer, type_, buffer_size, buffer_offset: int, blob):
+    def __init__(self, parent_directory, parent_buffer, type_, buffer_size, buffer_offset: int, destination: int, blob):
         super().__init__(parent_buffer, buffer_size, buffer_offset=buffer_offset)
 
         # TODO: Fix to reference of FET
         self.blob = blob
         self.type = type_
+        self.destination = destination
         self.references = [parent_directory] if parent_directory is not None else []
         self.parent_directory = parent_directory
 
@@ -287,10 +297,15 @@ class Entry(NestedBuffer):
         pass
 
     def get_readable_type(self):
+        if self.type in BIOS_ENTRY_TYPES:
+            return "BIOS"
         if self.type in self.DIRECTORY_ENTRY_TYPES:
             return f'{self.DIRECTORY_ENTRY_TYPES[self.type]}~{hex(self.type)}'
         else:
             return hex(self.type)
+
+    def get_readable_destination_address(self):
+        return hex(self.destination)
 
     def get_readable_version(self):
         return ''
