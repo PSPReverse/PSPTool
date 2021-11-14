@@ -575,7 +575,7 @@ class HeaderEntry(Entry):
         try:
             m.update(self.body.get_bytes())
         except:
-            print(f"Get bytes failed at entry: 0x{self.get_address():x} type: {self.get_readable_type()} size: 0x{self.buffer_size:x}")
+            print_warning(f"Get bytes failed at entry: 0x{self.get_address():x} type: {self.get_readable_type()} size: 0x{self.buffer_size:x}")
         return m.hexdigest()
 
     def sign(self,private_key):
