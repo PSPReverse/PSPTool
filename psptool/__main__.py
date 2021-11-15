@@ -18,7 +18,7 @@ import sys
 import os
 
 from .psptool import PSPTool
-from .utils import ObligingArgumentParser, print_warning, print_error_and_exit
+from .utils import ObligingArgumentParser, PrintHelper
 from .entry import PubkeyEntry, HeaderEntry
 
 from argparse import RawTextHelpFormatter, SUPPRESS
@@ -78,6 +78,7 @@ def main():
 
     args = parser.parse_args()
     psp = PSPTool.from_file(args.file, verbose=args.verbose)
+    ph = PrintHelper(args.verbose)
     output = None
 
     if args.extract_entry:
@@ -86,11 +87,11 @@ def main():
 
             if args.decompress:
                 if not entry.compressed:
-                    print_error_and_exit(f'Entry is not compressed {entry.get_readable_type()}')
+                    ph.print_error_and_exit(f'Entry is not compressed {entry.get_readable_type()}')
                 output = entry.get_decompressed()
             elif args.decrypt:
                 if not entry.encrypted:
-                    print_error_and_exit(f'Entry is not encrypted {entry.get_readable_type()}')
+                    ph.print_error_and_exit(f'Entry is not encrypted {entry.get_readable_type()}')
                 output = entry.get_decrypted()
             elif args.pem_key:
                 output = entry.get_pem_encoded()

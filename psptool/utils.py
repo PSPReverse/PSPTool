@@ -101,24 +101,27 @@ class NestedBuffer:
     def get_chunks(self, size: int, offset: int = 0):
         return chunker(self[offset:], size)
 
+class PrintHelper:
+    def __init__(self, is_verbose):
+        self.is_verbose = is_verbose
 
-def print_error_and_exit(arg0, *nargs, **kwargs):
-    """ Wrapper function to print errors to stderr, so we don't interfere with e.g. extraction output. """
-    arg0 = 'Error: ' + arg0 + '\n'
-    sys.stderr.write(arg0, *nargs, **kwargs)
-    sys.exit(1)
+    def print_error_and_exit(self, arg0):
+        """ Wrapper function to print errors to stderr, so we don't interfere with e.g. extraction output. """
+        arg0 = 'Error: ' + arg0 + '\n'
+        sys.stderr.write(arg0)
+        sys.exit(1)
 
+    def print_warning(self, arg0):
+        """ Wrapper function to print warnings to stderr, so we don't interfere with e.g. extraction output. """
+        arg0 = 'Warning: ' + arg0 + '\n'
+        sys.stderr.write(arg0)
 
-def print_warning(arg0, *nargs, **kwargs):
-    """ Wrapper function to print warnings to stderr, so we don't interfere with e.g. extraction output. """
-    arg0 = 'Warning: ' + arg0 + '\n'
-    sys.stderr.write(arg0, *nargs, **kwargs)
+    def print_info(self, arg0):
+        """ Wrapper function to print info to stderr, so we don't interfere with e.g. extraction output. """
+        if self.is_verbose:
+            arg0 = 'Info: ' + arg0 + '\n'
+            sys.stderr.write(arg0)
 
-
-def print_info(arg0, *nargs, **kwargs):
-    """ Wrapper function to print info to stderr, so we don't interfere with e.g. extraction output. """
-    arg0 = 'Info: ' + arg0 + '\n'
-    sys.stderr.write(arg0, *nargs, **kwargs)
 
 def round_to_int(n, i):
     if n % i:

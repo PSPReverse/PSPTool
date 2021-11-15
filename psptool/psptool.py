@@ -19,7 +19,7 @@ import json
 
 from .entry import HeaderEntry
 from .blob import Blob
-from .utils import print_warning
+from .utils import PrintHelper
 
 
 class PSPTool:
@@ -34,7 +34,7 @@ class PSPTool:
         return pt
 
     def __init__(self, rom_bytes, verbose=False):
-        self.print_warning = print_warning if verbose else lambda *args, **kwargs: None
+        self.ph = PrintHelper(verbose)
 
         self.blob = Blob(rom_bytes, len(rom_bytes), self)
         self.filename = None

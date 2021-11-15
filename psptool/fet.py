@@ -23,10 +23,11 @@ from typing import List
 from binascii import hexlify
 
 class Fet(NestedBuffer):
-    def __init__(self, parent_buffer, fet_offset: int, agesa_version):
+    def __init__(self, parent_buffer, fet_offset: int, agesa_version, psptool):
 
         # The nested buffer that represents the whole binary
         self.blob = parent_buffer
+        self.psptool = psptool
 
         self.fet_offset = fet_offset
 
@@ -66,12 +67,12 @@ class Fet(NestedBuffer):
             # TODO: Better warning
             # print_warning("Weird PSP Combo directory. Please report this")
             return
-        dir = Directory(self, addr, type, self.blob)
-        self.directories.append(dir)
-        if dir.secondary_directory_address is not None:
-            self.directories.append(Directory(self, dir.secondary_directory_address, 'secondary', self.blob))
-
-
+        dir_ = Directory(self, addr, type_, self.blob, self.psptool)
+        self.directories.append(dir_)
+        if dir_.secondary_directory_address is not None:
+            self.directories.append(
+                Directory(self, dir_.secondary_directory_address, 'secondary', self.blob, self.psptool)
+            )
 
     def _parse_entry_table(self):
         entries = self.fet.get_chunks(4,4)
@@ -81,7 +82,11 @@ class Fet(NestedBuffer):
             if addr in [0x0, 0xFFFFFFFF, 0xFFFFFFFe]:
                 continue
             addr &= self.mask
-            dir_magic = self[addr:addr + 4]
+            try:
+                dir_magic = self[addr:addr + 4]
+            except:
+                print(f"FET entry 0x{addr:x} not found or invalid, skipping ...")
+                continue
             if dir_magic == b'2PSP':
                 combo_addresses = self._parse_combo_dir(addr)
                 for addr in combo_addresses:
