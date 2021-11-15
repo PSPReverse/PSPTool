@@ -20,8 +20,6 @@ import math
 import zlib
 import struct
 
-from hashlib import md5
-
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.backends import default_backend
 
@@ -65,7 +63,7 @@ class NestedBuffer:
         if old_slice.start is None:
             start = self.buffer_offset
         else:
-            assert (old_slice.start <= self.buffer_size)
+            assert (old_slice.start <= self.buffer_size), "Slice offset out of bounds"
             if old_slice.start < 0:
                 start = self.buffer_offset + old_slice.start % self.buffer_size
             else:
@@ -128,6 +126,7 @@ def round_to_int(n, i):
         return n + (i - n % i)
     else:
         return n
+
 
 def chunker(seq, size):
     """ Utility function to chunk seq into a list of size sized sequences. """

@@ -90,7 +90,7 @@ class PSPTool:
                 if entry.verify_signature():
                     info.append('verified')
             if entry.is_legacy:
-                info.append('legacy Header')
+                info.append('legacy header')
             if entry.encrypted:
                 info.append('encrypted')
 
@@ -145,9 +145,9 @@ class PSPTool:
 
     def ls_dir_dict(self, fet,  directory_index, verbose=False):
         directory = fet.directories[directory_index]
-        return self.ls_entries_dict(entries=directory.entries, verbose=verbose)
+        return self.ls_entries_dict(entries=directory.entries)
 
-    def ls_entries_dict(self, entries=None, verbose=False):
+    def ls_entries_dict(self, entries=None):
         # list all entries of all directories by default (sorted by their address)
         if entries is None:
             entries = sorted(self.blob.unique_entries)
@@ -162,7 +162,7 @@ class PSPTool:
                 if entry.verify_signature():
                     info.append('verified')
             if entry.is_legacy:
-                info.append('legacy Header')
+                info.append('legacy header')
             if entry.encrypted:
                 info.append('encrypted')
 

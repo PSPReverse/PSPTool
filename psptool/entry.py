@@ -16,17 +16,13 @@
 
 import string
 import struct
-import traceback
 
 from .utils import NestedBuffer
 from .utils import shannon
 from .utils import chunker
 from .utils import zlib_decompress, zlib_compress
 from .utils import decrypt
-from .utils import print_warning
 from .utils import round_to_int
-
-from IPython import embed
 
 from enum import Enum
 
@@ -35,18 +31,15 @@ from base64 import b64encode
 from math import ceil
 from hashlib import md5
 
-import sys
-import zlib
-import re
-
 from cryptography.hazmat.primitives.serialization import load_der_public_key
-from cryptography.hazmat.primitives.serialization import load_pem_public_key, load_pem_private_key
+from cryptography.hazmat.primitives.serialization import load_pem_private_key
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.asymmetric import padding
 from cryptography.hazmat.primitives import hashes
 from cryptography.exceptions import InvalidSignature
 
 BIOS_ENTRY_TYPES = [0x10062, 0x30062]
+
 
 class Entry(NestedBuffer):
     ENTRY_ALIGNMENT = 0x100
@@ -132,17 +125,17 @@ class Entry(NestedBuffer):
     @classmethod
     def from_fields(cls, parent_directory, parent_buffer, type_, size, offset, blob, psptool, destination: int = None):
         # Try to parse these ID's as a key entry
-        PUBKEY_ENTRY_TYPES = [ 0x0, 0x9, 0xa, 0x5, 0xd]
+        PUBKEY_ENTRY_TYPES = [0x0, 0x9, 0xa, 0x5, 0xd]
 
         # Types known to have no PSP HDR
         # TODO: Find a better way to identify those entries
-        NO_HDR_ENTRY_TYPES = [ 0x4, 0xb, 0x21, 0x40, 0x70, 0x30062, 0x6, 0x61, 0x60,
-                               0x68, 0x100060, 0x100068, 0x5f, 0x15f, 0x1a, 0x22, 0x63,
-                               0x67 , 0x66, 0x100066, 0x200066, 0x300066, 0x10062,
-                               0x400066, 0x500066, 0x800068, 0x61, 0x200060, 0x300060,
-                               0x300068, 0x400068, 0x500068, 0x400060, 0x500060, 0x200068,
-                               0x7, 0x38]
-        NO_SIZE_ENTRY_TYPES = [ 0xb]
+        NO_HDR_ENTRY_TYPES = [0x4, 0xb, 0x21, 0x40, 0x70, 0x30062, 0x6, 0x61, 0x60,
+                              0x68, 0x100060, 0x100068, 0x5f, 0x15f, 0x1a, 0x22, 0x63,
+                              0x67, 0x66, 0x100066, 0x200066, 0x300066, 0x10062,
+                              0x400066, 0x500066, 0x800068, 0x61, 0x200060, 0x300060,
+                              0x300068, 0x400068, 0x500068, 0x400060, 0x500060, 0x200068,
+                              0x7, 0x38]
+        NO_SIZE_ENTRY_TYPES = [0xb]
 
         new_entry = None
 
@@ -191,8 +184,8 @@ class Entry(NestedBuffer):
         elif type_ == Entry.Type.NO_HDR_ENTRY:
             psptool.ph.print_warning(f"from_blob is not implemented for non-header objects")
             pass
-        elif type == Entry.Type.NORMAL:
-            size = round_to_int(len(binary),0x10)
+        elif type_ == Entry.Type.NORMAL:
+            size = round_to_int(len(binary), 0x10)
             if compressed:
                 rom_data = zlib_compress(binary)
                 zlib_size = len(rom_data)
@@ -200,11 +193,11 @@ class Entry(NestedBuffer):
             else:
                 rom_data = binary
                 zlib_size = 0
-                padded_size = round_to_int(len(rom_data),0x10)
+                padded_size = round_to_int(len(rom_data), 0x10)
 
             if signed:
-                if private_key != None:
-                    private_key = load_pem_private_key(private_key,password=None,backend=default_backend())
+                if private_key is not None:
+                    private_key = load_pem_private_key(private_key, password=None, backend=default_backend())
                     sig_len = private_key.key_size // 8
                 else:
                     # We reserve 0x200 for the signature, just in case we use a 4096 bit key.
@@ -229,30 +222,26 @@ class Entry(NestedBuffer):
                 blob[0x100:0x100 + len(rom_data)] = rom_data
                 blob[0x100 + len(rom_data):0x100 + padded_size] = padded_size * b'\xff'
 
-
             # Set compressed bit
             if compressed:
                 blob[0x48:0x4c] = (1).to_bytes(4, 'little')
             # Set size
-            blob[0x14:0x18] = (size).to_bytes(4, 'little')
+            blob[0x14:0x18] = size.to_bytes(4, 'little')
             # Set rom_size
-            blob[0x6c:0x70] = (total_size).to_bytes(4, 'little')
+            blob[0x6c:0x70] = total_size.to_bytes(4, 'little')
             if compressed:
                 # Set zlib_size
-                blob[0x54:0x58] = (zlib_size).to_bytes(4, 'little')
+                blob[0x54:0x58] = zlib_size.to_bytes(4, 'little')
 
             entry = HeaderEntry(None, blob, id_, total_size, 0x0, blob, psptool)
 
-            entry = HeaderEntry(None, blob, id, total_size, 0x0, blob)
-
-            if signed and private_key != None:
+            if signed and private_key is not None:
                 entry.sign(private_key)
                 entry[-0x200:] = entry.signature
             # if signed:
             #     sig = private_key.sign(
 
             return entry
-
 
         else:
             raise Entry.TypeError()
@@ -269,12 +258,10 @@ class Entry(NestedBuffer):
         self.references = [parent_directory] if parent_directory is not None else []
         self.parent_directory = parent_directory
 
-
         self.compressed = False
         self.signed = False
         self.encrypted = False
         self.is_legacy = False
-
 
         try:
             self._parse()
@@ -397,8 +384,6 @@ class PubkeyEntry(Entry):
 
 
 class HeaderEntry(Entry):
-
-
     HEADER_LEN = 0x100
 
     def _parse(self):
@@ -421,11 +406,9 @@ class HeaderEntry(Entry):
         self.unknown_bool = struct.unpack('<I', self.header[0x7c:0x80])[0]
         self.wrapped_key = hexlify(self.header[0x80:0x90])
 
-
         # TODO: Take care of headers with only 0xfff...
 
         # TODO if zlib_size == 0 try size_signed
-
 
         assert(self.compressed in [0, 1])
         assert(self.encrypted in [0, 1])
@@ -478,13 +461,12 @@ class HeaderEntry(Entry):
             # raw_bytes = zlib.decompress(self[0x100:])
             self.signature = None
 
-
         self.body = NestedBuffer(self, len(self) - self.size_signed - self.header_len, self.header_len)
         self.is_legacy = True
 
     def _parse_hdr(self):
         if self.rom_size == 0:
-            #TODO throw exception
+            # TODO throw exception
             self.buffer_size = self.size_signed + self.header_len
             self.psptool.ph.print_warning("ERROR. rom size is zero")
         else:
@@ -495,7 +477,6 @@ class HeaderEntry(Entry):
             sig_start = self.get_address() + self.rom_size - self.signature_len
             # self.psptool.ph.print_warning(f"Signature at: 0x{buf_start:x} sig_start: 0x{sig_start:x}")
             self.signature = NestedBuffer(self, self.signature_len, sig_start - buf_start)
-
 
         if self.compressed:
             if self.zlib_size == 0:
@@ -511,7 +492,6 @@ class HeaderEntry(Entry):
 
         self.body = NestedBuffer(self, len(self) - self.header_len - self.signature_len, self.header_len)
         self.is_legacy = False
-
 
     def get_readable_version(self):
         return '.'.join([hex(b)[2:].upper() for b in self.version])
@@ -569,8 +549,8 @@ class HeaderEntry(Entry):
             return decrypt(self.body.get_bytes(), self.key, unwrapped_ikek, self.iv)
 
     def get_unwrapped_ikek(self) -> bytes:
-        #TODO: Find out how to identify the correct IKEK.
-        #      For now assume that the zen+ IKEK is correct.
+        # TODO: Find out how to identify the correct IKEK.
+        #       For now assume that the zen+ IKEK is correct.
 
         # if self.get_ikek_md5sum() == self.HASH_IKEK_ZEN:
         #     return self.UNWRAPPED_IKEK_ZEN
@@ -580,8 +560,6 @@ class HeaderEntry(Entry):
         #     return None
 
         return self.UNWRAPPED_IKEK_ZEN_PLUS
-
-
 
     def shannon_entropy(self):
         return shannon(self.body[:])
@@ -637,7 +615,7 @@ class HeaderEntry(Entry):
         # However, we have not yet seen such entry.
 
         # Only verify signature if we actually have a signature
-        if self.signature == None:
+        if self.signature is None:
             return False
 
         if self.compressed:
@@ -656,12 +634,11 @@ class HeaderEntry(Entry):
 
         crypto_pubkey = load_der_public_key(pubkey_der_encoded, backend=default_backend())
 
-
         if len(self.signature) == 0x100:
-            hash = hashes.SHA256()
+            hash_ = hashes.SHA256()
             salt_len = 32
         elif len(self.signature) == 0x200:
-            hash = hashes.SHA384()
+            hash_ = hashes.SHA384()
             salt_len = 48
         else:
             self.psptool.ph.print_warning("Weird signature len")
@@ -672,10 +649,10 @@ class HeaderEntry(Entry):
                 self.signature.get_bytes(),
                 signed_data,
                 padding.PSS(
-                    mgf=padding.MGF1(hash),
+                    mgf=padding.MGF1(hash_),
                     salt_length=salt_len
                 ),
-                hash
+                hash_
             )
         except InvalidSignature:
             return False

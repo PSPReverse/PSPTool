@@ -23,6 +23,7 @@ from .entry import PubkeyEntry, HeaderEntry
 
 from argparse import RawTextHelpFormatter, SUPPRESS
 
+
 def main():
     # CLI stuff to create a PSPTool object and interact with it
     parser = ObligingArgumentParser(description='Display, extract, and manipulate AMD PSP firmware inside BIOS ROMs.\n',
@@ -152,7 +153,7 @@ def main():
         if args.directory_index is not None and args.entry_index is not None and args.subfile is not None \
                 and args.outfile is not None:
             with open(args.subfile, 'rb') as f:
-                    sub_binary = f.read()
+                sub_binary = f.read()
 
             entry = psp.blob.fets[0].directories[args.directory_index].entries[args.entry_index]
             entry.move_buffer(entry.get_address(), len(sub_binary))

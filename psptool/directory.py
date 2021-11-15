@@ -16,10 +16,11 @@
 
 import struct
 
-from .utils import NestedBuffer, chunker, fletcher32, print_warning
+from .utils import NestedBuffer, chunker, fletcher32
 from .entry import Entry, PubkeyEntry, BIOS_ENTRY_TYPES
 
 from typing import List
+
 
 class Directory(NestedBuffer):
     ENTRY_FIELDS = [
