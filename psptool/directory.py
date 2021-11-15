@@ -129,13 +129,13 @@ class Directory(NestedBuffer):
             # if len(self.blob) == 0x800000:
             #     entry_fields['offset'] &= 0x7FFFFF
 
-            if entry_fields['type'] in [ 0x0, 0x9, 0xa, 0x5, 0xd ]:
+            if entry_fields['type'] in [0x0, 0x9, 0xa, 0x5, 0xd]:
                 entry = Entry.from_fields(self, self.parent_buffer,
                                           entry_fields['type'],
                                           entry_fields['size'],
                                           entry_fields['offset'],
-                                          None, # not applicable
-                                          self.blob)
+                                          self.blob,
+                                          self.psptool)
                 if isinstance(entry, PubkeyEntry):
                     self.blob.pubkeys[entry.key_id] = entry
                 else:
@@ -163,8 +163,9 @@ class Directory(NestedBuffer):
                                       entry_fields['type'],
                                       entry_fields['size'],
                                       entry_fields['offset'],
-                                      destination,
-                                      self.blob)
+                                      self.blob,
+                                      self.psptool,
+                                      destination=destination)
 
             for existing_entry in self.blob.unique_entries:
                 if entry == existing_entry:

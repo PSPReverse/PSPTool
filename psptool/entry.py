@@ -46,7 +46,7 @@ from cryptography.hazmat.primitives.asymmetric import padding
 from cryptography.hazmat.primitives import hashes
 from cryptography.exceptions import InvalidSignature
 
-BIOS_ENTRY_TYPES = [ 0x10062, 0x30062]
+BIOS_ENTRY_TYPES = [0x10062, 0x30062]
 
 class Entry(NestedBuffer):
     ENTRY_ALIGNMENT = 0x100
@@ -130,7 +130,7 @@ class Entry(NestedBuffer):
         pass
 
     @classmethod
-    def from_fields(cls, parent_directory, parent_buffer, type_, size, offset, destination, blob):
+    def from_fields(cls, parent_directory, parent_buffer, type_, size, offset, blob, psptool, destination: int = None):
         # Try to parse these ID's as a key entry
         PUBKEY_ENTRY_TYPES = [ 0x0, 0x9, 0xa, 0x5, 0xd]
 
@@ -157,7 +157,9 @@ class Entry(NestedBuffer):
                     parent_buffer,
                     type_,
                     size,
-                    buffer_offset=offset,
+                    offset,
+                    blob,
+                    psptool,
                     destination=destination,
                     blob=blob
                 )
