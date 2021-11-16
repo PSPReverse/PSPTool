@@ -1,4 +1,4 @@
-
+_Please note that [PSPTrace](https://github.com/PSPReverse/PSPTrace) is no longer part of this package/repository, but lives in its [own](https://github.com/PSPReverse/PSPTrace)._
 
 # PSPTool
 
@@ -314,7 +314,7 @@ $ psptool -Xunk ASUS_PRIME-A320M-A-ASUS-4801.CAP
 </details>
 
 
-**Example 3**: *Extract the firmware entry from a given BIOS ROM at directory index 1 entry index 8 (`PSP_BOOT_TIME_TRUSTLETS`) and show strings of length 8.*
+**Example 3**: *Extract the firmware entry from a given BIOS ROM at directory index 1 entry index 8 (`PSP_BOOT_TIME_TRUSTLETS`) and show strings of length 10.*
 
 ```
 $ psptool -X -d 1 -e 8 MSI_X399_E7B92AMS.130 | strings -n 10
