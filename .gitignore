@@ -98,3 +98,4 @@ dist
 *.egg-info
 
 *.swp
+venv

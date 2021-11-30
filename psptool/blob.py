@@ -19,7 +19,7 @@ import binascii
 
 from typing import List
 
-from .utils import NestedBuffer, print_warning
+from .utils import NestedBuffer
 from .entry import Entry, PubkeyEntry
 from .fet import Fet
 
@@ -79,12 +79,12 @@ class Blob(NestedBuffer):
         if m is None:
             raise self.NoFirmwareEntryTableError
         fet_offset = m.start() + 4
-        self.fets.append(Fet(self, fet_offset, self.agesa_version))
+        self.fets.append(Fet(self, fet_offset, self.agesa_version, self.psptool))
         if self.dual_rom:
             if self[fet_offset + 0x1000000:fet_offset + 0x1000004] == self._FIRMWARE_ENTRY_MAGIC:
-                self.fets.append(Fet(self, fet_offset + 0x1000000, self.agesa_version_second))
+                self.fets.append(Fet(self, fet_offset + 0x1000000, self.agesa_version_second, self.psptool))
             else:
-                print_warning(f"Found two AGESA versions strings, but only one firmware entry table")
+                self.psptool.ph.print_warning(f"Found two AGESA versions strings, but only one firmware entry table")
 
     def all_pubkeys(self):
         return sum(self.pubkeys.values(), start=list())
@@ -132,10 +132,11 @@ class Blob(NestedBuffer):
 
                 try:
                     yield PubkeyEntry(self, self, 0xdead, size, start, self)
+
                 except Entry.ParseError:
-                    print_warning(f"_find_pubkey: Entry parse error at 0x{start:x}")
+                    self.psptool.ph.print_warning(f"_find_pubkey: Entry parse error at 0x{start:x}")
                 except:
-                    print_warning(f"Error couldn't convert key at: 0x{start:x}")
+                    self.psptool.ph.print_warning(f"Error couldn't convert key at: 0x{start:x}")
 
     def get_entries_by_type(self) -> List[Entry]:
         entries = []

@@ -18,10 +18,11 @@ import sys
 import os
 
 from .psptool import PSPTool
-from .utils import ObligingArgumentParser, print_warning, print_error_and_exit
+from .utils import ObligingArgumentParser, PrintHelper
 from .entry import PubkeyEntry, HeaderEntry
 
 from argparse import RawTextHelpFormatter, SUPPRESS
+
 
 def main():
     # CLI stuff to create a PSPTool object and interact with it
@@ -78,6 +79,7 @@ def main():
 
     args = parser.parse_args()
     psp = PSPTool.from_file(args.file, verbose=args.verbose)
+    ph = PrintHelper(args.verbose)
     output = None
 
     if args.extract_entry:
@@ -86,11 +88,11 @@ def main():
 
             if args.decompress:
                 if not entry.compressed:
-                    print_error_and_exit(f'Entry is not compressed {entry.get_readable_type()}')
+                    ph.print_error_and_exit(f'Entry is not compressed {entry.get_readable_type()}')
                 output = entry.get_decompressed()
             elif args.decrypt:
                 if not entry.encrypted:
-                    print_error_and_exit(f'Entry is not encrypted {entry.get_readable_type()}')
+                    ph.print_error_and_exit(f'Entry is not encrypted {entry.get_readable_type()}')
                 output = entry.get_decrypted()
             elif args.pem_key:
                 output = entry.get_pem_encoded()
@@ -151,7 +153,7 @@ def main():
         if args.directory_index is not None and args.entry_index is not None and args.subfile is not None \
                 and args.outfile is not None:
             with open(args.subfile, 'rb') as f:
-                    sub_binary = f.read()
+                sub_binary = f.read()
 
             entry = psp.blob.fets[0].directories[args.directory_index].entries[args.entry_index]
             entry.move_buffer(entry.get_address(), len(sub_binary))

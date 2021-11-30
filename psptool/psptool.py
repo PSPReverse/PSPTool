@@ -19,7 +19,7 @@ import json
 
 from .entry import HeaderEntry
 from .blob import Blob
-from .utils import print_warning
+from .utils import PrintHelper
 
 
 class PSPTool:
@@ -34,7 +34,7 @@ class PSPTool:
         return pt
 
     def __init__(self, rom_bytes, verbose=False):
-        self.print_warning = print_warning if verbose else lambda *args, **kwargs: None
+        self.ph = PrintHelper(verbose)
 
         self.blob = Blob(rom_bytes, len(rom_bytes), self)
         self.filename = None
@@ -100,7 +100,7 @@ class PSPTool:
                 if entry.verify_signature():
                     info.append('verified')
             if entry.is_legacy:
-                info.append('legacy Header')
+                info.append('legacy header')
             if entry.encrypted:
                 info.append('encrypted')
 
@@ -155,9 +155,9 @@ class PSPTool:
 
     def ls_dir_dict(self, fet,  directory_index, verbose=False):
         directory = fet.directories[directory_index]
-        return self.ls_entries_dict(entries=directory.entries, verbose=verbose)
+        return self.ls_entries_dict(entries=directory.entries)
 
-    def ls_entries_dict(self, entries=None, verbose=False):
+    def ls_entries_dict(self, entries=None):
         # list all entries of all directories by default (sorted by their address)
         if entries is None:
             entries = sorted(self.blob.unique_entries)
@@ -172,7 +172,7 @@ class PSPTool:
                 if entry.verify_signature():
                     info.append('verified')
             if entry.is_legacy:
-                info.append('legacy Header')
+                info.append('legacy header')
             if entry.encrypted:
                 info.append('encrypted')
 
@@ -186,6 +186,9 @@ class PSPTool:
                 'info': info,
                 'md5': entry.md5()[:4].upper()
             }
+
+            if entry.get_readable_type() == "BIOS":
+                all_values['destinationAddress'] = entry.get_readable_destination_address()
 
             if type(entry) is HeaderEntry:
                 sizes = {
