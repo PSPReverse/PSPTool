@@ -32,7 +32,7 @@ from math import ceil
 from hashlib import md5
 
 from cryptography.hazmat.primitives.serialization import load_der_public_key
-from cryptography.hazmat.primitives.serialization import load_pem_private_key
+from cryptography.hazmat.primitives.serialization import load_pem_public_key, load_pem_private_key
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.asymmetric import padding
 from cryptography.hazmat.primitives import hashes
@@ -225,6 +225,7 @@ class Entry(NestedBuffer):
                 blob[0x100:0x100 + len(rom_data)] = rom_data
                 blob[0x100 + len(rom_data):0x100 + padded_size] = padded_size * b'\xff'
 
+
             # Set compressed bit
             if compressed:
                 blob[0x48:0x4c] = (1).to_bytes(4, 'little')
@@ -246,6 +247,7 @@ class Entry(NestedBuffer):
 
             return entry
 
+
         else:
             raise Entry.TypeError()
 
@@ -261,10 +263,12 @@ class Entry(NestedBuffer):
         self.references = [parent_directory] if parent_directory is not None else []
         self.parent_directory = parent_directory
 
+
         self.compressed = False
         self.signed = False
         self.encrypted = False
         self.is_legacy = False
+
 
         try:
             self._parse()
@@ -333,6 +337,9 @@ class PubkeyEntry(Entry):
     def _parse(self):
         """ SEV spec B.1 """
 
+        self.is_inline = False
+        self.parent_entry = None  # will be set in Blob._find_inline_pubkey_parents
+
         pubexp_size = struct.unpack('<I', self[0x38:0x3c])[0] // 8
         modulus_size = struct.unpack('<I', self[0x3c:0x40])[0] // 8
         signature_size = len(self) - 0x40 - pubexp_size - modulus_size
@@ -391,7 +398,8 @@ class PubkeyEntry(Entry):
                b'\n'.join(chunker(b64encode(self.get_der_encoded()), 64)) + \
                b'\n-----END PUBLIC KEY-----\n'
 
-    def sign(self, private_key, certifying_id=None):
+    def sign(self, private_key, certifying_id = None):
+
         if certifying_id:
             self.set_bytes(0x14, 0x10, certifying_id)
             self.certifying_id = hexlify(certifying_id)
@@ -517,8 +525,11 @@ class HeaderEntry(Entry):
         self.unknown_bool = struct.unpack('<I', self.header[0x7c:0x80])[0]
         self.wrapped_key = hexlify(self.header[0x80:0x90])
 
+
         # TODO: Take care of headers with only 0xfff...
+
         # TODO if zlib_size == 0 try size_signed
+
 
         assert(self.compressed in [0, 1])
         assert(self.encrypted in [0, 1])
@@ -565,6 +576,7 @@ class HeaderEntry(Entry):
             # raw_bytes = zlib.decompress(self[0x100:])
             self.signature = None
 
+
         self.body = NestedBuffer(self, len(self) - self.size_signed - self.header_len, self.header_len)
         self.is_legacy = True
 
@@ -582,10 +594,11 @@ class HeaderEntry(Entry):
             # self.psptool.ph.print_warning(f"Signature at: 0x{buf_start:x} sig_start: 0x{sig_start:x}")
             self.signature = NestedBuffer(self, self.signature_len, sig_start - buf_start)
 
+
         if self.compressed:
             if self.zlib_size == 0:
                 # Todo throw exception
-                self.psptool.ph.print_warning(f"ERROR: Weird entry. Address 0x{self.get_address():x}")
+                print_warning(f"ERROR: Weird entry. Address 0x{self.get_address():x}")
 
         # Get IV and wrapped KEY from entry header
         if self.encrypted:
@@ -596,6 +609,7 @@ class HeaderEntry(Entry):
 
         self.body = NestedBuffer(self, len(self) - self.header_len - self.signature_len, self.header_len)
         self.is_legacy = False
+
 
     def get_readable_version(self):
         return '.'.join([hex(b)[2:].upper() for b in self.version])
@@ -665,6 +679,8 @@ class HeaderEntry(Entry):
 
         return self.UNWRAPPED_IKEK_ZEN_PLUS
 
+
+
     def shannon_entropy(self):
         return shannon(self.body[:])
 
@@ -688,6 +704,7 @@ class HeaderEntry(Entry):
             return False
         else:
             signed_data = self[:self.size_signed + self.header_len]
+
 
         if private_key.key_size == 2048 :
             _hash = hashes.SHA256()

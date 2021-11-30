@@ -23,6 +23,15 @@ from .utils import NestedBuffer
 from .entry import Entry, PubkeyEntry
 from .fet import Fet
 
+# from https://stackoverflow.com/a/39358140
+class RangeDict(dict):
+    def __getitem__(self, item):
+        if type(item) != range:
+            for key in self:
+                if item in key:
+                    return self[key]
+        else:
+            return super().__getitem__(item)
 
 class Blob(NestedBuffer):
     _FIRMWARE_ENTRY_MAGIC = b'\xAA\x55\xAA\x55'
@@ -45,6 +54,8 @@ class Blob(NestedBuffer):
         self._parse_agesa_version()
 
         self._find_entry_table()
+        self._construct_range_dict()
+        self._find_inline_pubkey_parents()
 
     def __repr__(self):
         return f'Blob(agesa_version={self.agesa_version})'
@@ -86,28 +97,72 @@ class Blob(NestedBuffer):
             else:
                 self.psptool.ph.print_warning(f"Found two AGESA versions strings, but only one firmware entry table")
 
+    def _find_inline_pubkey_parents(self):
+        inline_keys = [pk
+            for pks in self.pubkeys.values()
+                for pk in pks
+                    if pk.is_inline
+        ]
+
+        for key in inline_keys:
+            key.parent_entry = self.range_dict[key.get_address()]
+
+    def _construct_range_dict(self):
+
+        directories = [directory for fet in self.fets for directory in fet.directories]
+        directory_entries = [directory.entries for directory in directories]
+
+        # flatten list of lists
+        all_entries = [entry for sublist in directory_entries for entry in sublist]
+
+        # create RangeDict in order to find entry types for addresses
+        self.range_dict = RangeDict({
+            ** {
+                range(entry.get_address(), entry.get_address() + entry.buffer_size):  # key is start and end address of the entry
+                entry
+                for entry in all_entries if entry.buffer_size != 0xffffffff  # value is its type
+            }, ** {
+                range(directory.get_address(), directory.get_address() + len(directory)):
+                directory
+                for directory in directories
+            }, ** {
+                range(fet.get_address(), fet.get_address() + len(fet)):
+                fet
+                for fet in self.fets
+            }
+        })
+
+
     def all_pubkeys(self):
         return sum(self.pubkeys.values(), start=list())
 
     def get_pubkeys(self, key_id):
+
         if not self.pubkeys.get(key_id):
             self.pubkeys[key_id] = list(self._find_pubkeys(key_id))
+
         return self.pubkeys[key_id]
 
     def add_pubkey(self, pubkey_entry):
+
+        # search for inline keys if that hasn't been done yet
         if not self.pubkeys.get(pubkey_entry.key_id):
             self.pubkeys[pubkey_entry.key_id] = list(self._find_pubkeys(pubkey_entry.key_id))
 
         keys = self.pubkeys[pubkey_entry.key_id]
-        keys = list(filter(lambda k: k.type != 0xdead or k.get_address() != pubkey_entry.get_address(), keys))
+        # if this entry has been found as an "inline" pubkey, remove it
+        keys = list(filter(lambda k: k.type != 0xdead and k.get_address() != pubkey_entry.get_address(), keys))
         keys.append(pubkey_entry)
+
         self.pubkeys[pubkey_entry.key_id] = keys
 
     def _find_pubkeys(self, fp):
         """ Try to find a pubkey anywhere in the blob.
         The pubkey is identified by its fingerprint. If found, the pubkey is
         added to the list of pubkeys of the blob """
+
         m = re.finditer(re.escape(binascii.a2b_hex(fp)), self.raw_blob)
+
         for index in m:
             start = index.start() - 4
             if int.from_bytes(self.raw_blob[start:start+4], 'little') == 1:
@@ -131,8 +186,9 @@ class Blob(NestedBuffer):
                         size += 0x200
 
                 try:
-                    yield PubkeyEntry(self, self, 0xdead, size, start, self)
-
+                    res = PubkeyEntry(self, self, 0xdead, size, start, self, self.psptool)
+                    res.is_inline = True
+                    yield res
                 except Entry.ParseError:
                     self.psptool.ph.print_warning(f"_find_pubkey: Entry parse error at 0x{start:x}")
                 except:
