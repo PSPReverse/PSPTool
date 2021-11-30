@@ -93,7 +93,7 @@ class Entry(NestedBuffer):
         # 0x40: 'FW_L2_PTR',
         0x41: 'FW_IMC',
         0x42: 'FW_GEC',
-        0x43: 'FW_XHCI',
+        # 0x43: 'FW_XHCI',
         0x44: 'FW_INVALID',
         0x5f: 'FW_PSP_SMUSCS',
         0x60: 'FW_IMC',
@@ -108,12 +108,15 @@ class Entry(NestedBuffer):
         0x14: '!PSP_MCLF_TRUSTLETS',  # very similiar to ~PspTrustlets.bin~ in coreboot blobs
         0x38: '!PSP_ENCRYPTED_NV_DATA',
         0x40: '!PL2_SECONDARY_DIRECTORY',
+        0x43: '!KEY_UNKNOWN_1',
+        0x4e: '!KEY_UNKNOWN_2',
         0x70: '!BL2_SECONDARY_DIRECTORY',
         0x15f: '!FW_PSP_SMUSCS_2',  # seems to be a secondary FW_PSP_SMUSCS (see above)
         0x112: '!SMU_OFF_CHIP_FW_3',  # seems to tbe a tertiary SMU image (see above)
         0x39: '!SEV_APP',
         0x10062: '!UEFI-IMAGE',
-        0x30062: '!UEFI-IMAGE'
+        0x30062: '!UEFI-IMAGE',
+        0xdead: '!KEY_NOT_IN_DIR'
 
     }
 
@@ -131,7 +134,7 @@ class Entry(NestedBuffer):
     @classmethod
     def from_fields(cls, parent_directory, parent_buffer, type_, size, offset, blob):
         # Try to parse these ID's as a key entry
-        PUBKEY_ENTRY_TYPES = [ 0x0, 0x9, 0xa, 0x5, 0xd]
+        PUBKEY_ENTRY_TYPES = [ 0x0, 0x9, 0xa, 0x5, 0xd, 0x43, 0x4e, 0xdead]
 
         # Types known to have no PSP HDR
         # TODO: Find a better way to identify those entries
@@ -325,9 +328,12 @@ class PubkeyEntry(Entry):
         """ SEV spec B.1 """
 
         pubexp_size = struct.unpack('<I', self[0x38:0x3c])[0] // 8
-        modulus_size = signature_size = struct.unpack('<I', self[0x3c:0x40])[0] // 8
+        modulus_size = struct.unpack('<I', self[0x3c:0x40])[0] // 8
+        signature_size = len(self) - 0x40 - pubexp_size - modulus_size
+        
         pubexp_start = 0x40
         modulus_start = pubexp_start + pubexp_size
+        signature_start = modulus_start + modulus_size
 
         # Byte order of the numbers is inverted over their entire length
         # Assumption: Only the most significant 4 bytes of pubexp are relevant and can be converted to int
@@ -341,20 +347,23 @@ class PubkeyEntry(Entry):
         self.certifying_id = hexlify(self[0x14:0x24])
         self.key_usage = struct.unpack('<I', self[0x24:0x28])[0]
 
-        expected_size = 0x40 + pubexp_size + modulus_size + signature_size
-
         # Option 1: it's a regular Pubkey (with a trailing signature)
-        if len(self) == expected_size:
-            self.signature = self[modulus_start + modulus_size:]
+        if signature_size in [0x100, 0x200]:
+            self.signature = self[signature_start:]
+            self.signature_len = signature_size
+            self.signed = True
         # Option 2: it's the AMD Root Signing Key (without a trailing signature)
-        elif len(self) == expected_size - signature_size:
+        elif signature_size == 0:
             self.signature = None
         else:
-            raise Entry.ParseError()
+            raise Entry.ParseError(f"unknown signature size: {hex(signature_size)}")
 
     def get_readable_magic(self):
         # use this to show the first four characters of the key ID
         return str(self.key_id[:4], encoding='ascii').upper()
+
+    def get_readable_signed_by(self):
+        return str(self.certifying_id, encoding='ascii').upper()[:4]
 
     def get_der_encoded(self):
         if struct.unpack('>I', self.pubexp)[0] != 65537:
@@ -376,10 +385,110 @@ class PubkeyEntry(Entry):
                b'\n'.join(chunker(b64encode(self.get_der_encoded()), 64)) + \
                b'\n-----END PUBLIC KEY-----\n'
 
+    def sign(self, private_key, certifying_id=None):
+        if certifying_id:
+            self.set_bytes(0x14, 0x10, certifying_id)
+            self.certifying_id = hexlify(certifying_id)
+
+        signed_data = self.get_bytes(0, self.buffer_size - self.signature_len)
+
+        if private_key.key_size == 2048:
+            _hash = hashes.SHA256()
+            salt_length = 32
+        elif private_key.key_size == 4096:
+            _hash = hashes.SHA384()
+            salt_length = 48
+        else:
+            print_warning(f"Unknown key_size: {private_key.key_size}")
+            return False
+
+        try:
+            signature = private_key.sign(
+                signed_data,
+                padding.PSS(
+                    mgf=padding.MGF1(_hash),
+                    salt_length=salt_length
+                ),
+                _hash
+            )
+        except:
+            print_warning("Signing exception")
+            return False
+
+        signature = bytearray(signature)
+        signature.reverse()
+
+        if len(signature) != self.signature_len:
+            print_warning(f"PubkeyEntry at {self.get_address()} gets a new signature of a different size!")
+            self.buffer_size += len(signature) - self.signature_len
+            self.signature.buffer_size += len(signature) - self.signature_len
+
+        self.signature = bytearray(signature)
+        self.signature_len = len(signature)
+
+        self.set_bytes(self.buffer_size - len(signature), len(signature), signature)
+
+        return True
+
+    def verify_signature(self, pubkey=None):
+        # Only verify signature if we actually have a signature
+        if self.signature is None:
+            return False
+
+        if pubkey:
+            signed_data = self.get_bytes(0, self.buffer_size - self.signature_len)
+
+            signature = self.signature.copy()
+            signature.reverse()
+            signature = bytes(signature)
+
+            if self.signature_len == 0x100:
+                _hash = hashes.SHA256()
+                salt_len = 32
+            elif self.signature_len == 0x200:
+                _hash = hashes.SHA384()
+                salt_len = 48
+            else:
+                print_warning("Weird signature len")
+                return False
+
+            try:
+                pubkey.verify(
+                    signature,
+                    signed_data,
+                    padding.PSS(
+                        mgf=padding.MGF1(_hash),
+                        salt_length=salt_len
+                    ),
+                    _hash
+                )
+            except InvalidSignature:
+                return False
+
+            return True
+
+        else:
+            pubkeys = self.blob.get_pubkeys(self.certifying_id)
+
+            for key in filter(lambda key: len(key.modulus) != self.signature_len, pubkeys):
+                print_warning(f"Key at {hex(key.get_address())} is supposed to sign key at: {hex(self.get_address())}, "
+                              f"but signature/key sized don't match.")
+
+            pubkeys = list(filter(lambda key: len(key.modulus) == self.signature_len, pubkeys))
+
+            if not pubkeys:
+                print_warning(f"Couldn't find signing key for key at: {hex(self.get_address())}.")
+                return
+
+            for pubkey in pubkeys:
+                pubkey_der_encoded = pubkey.get_der_encoded()
+                crypto_pubkey = load_der_public_key(pubkey_der_encoded, backend=default_backend())
+                if self.verify_signature(crypto_pubkey):
+                    return True
+        return False
+
 
 class HeaderEntry(Entry):
-
-
     HEADER_LEN = 0x100
 
     def _parse(self):
@@ -402,11 +511,8 @@ class HeaderEntry(Entry):
         self.unknown_bool = struct.unpack('<I', self.header[0x7c:0x80])[0]
         self.wrapped_key = hexlify(self.header[0x80:0x90])
 
-
         # TODO: Take care of headers with only 0xfff...
-
         # TODO if zlib_size == 0 try size_signed
-
 
         assert(self.compressed in [0, 1])
         assert(self.encrypted in [0, 1])
@@ -427,25 +533,16 @@ class HeaderEntry(Entry):
 
     def _parse_signature(self):
         if self.signature_fingerprint != hexlify(16 * b'\x00'):
-            try:
-                self.pubkey = self.blob.pubkeys[self.signature_fingerprint]
-                self.signature_len = len(self.pubkey.modulus)
-            except KeyError:
-                # Key not found yet, try to find it anywhere in the blob
-                self.blob.find_pubkey(self[0x38:0x48])
-                try:
-                    self.pubkey = self.blob.pubkeys[self.signature_fingerprint]
-                except KeyError:
-                    print_warning(f"Couldn't find corresponding key in blob for entry at: 0x{self.get_address():x}. Type: {self.get_readable_type()}")
-                    self.signature_len = 0x0
-                    self.signed = False
-                    return
-            self.signature_len = len(self.pubkey.modulus)
+            self.pubkeys = self.blob.get_pubkeys(self.signature_fingerprint)
+            if not self.pubkeys:
+                print_warning(f"Couldn't find corresponding key in blob for entry at: 0x{self.get_address():x}. Type: "
+                              f"{self.get_readable_type()}")
+                self.signature_len = 0x0
+                self.signed = False
+                return
+            self.signature_len = len(self.pubkeys[0].modulus)
         else:
             print_warning("ERROR: Signed but no key id present")
-
-
-
 
     def _parse_legacy_hdr(self):
 
@@ -458,17 +555,16 @@ class HeaderEntry(Entry):
             # The signature can be found in the last 'signature_len' bytes of the entry
             self.signature = NestedBuffer(self,self.signature_len, len(self) - self.signature_len)
         else:
-            #TODO create nested buffer with uncompressed signature
+            # TODO create nested buffer with uncompressed signature
             # raw_bytes = zlib.decompress(self[0x100:])
             self.signature = None
-
 
         self.body = NestedBuffer(self, len(self) - self.size_signed - self.header_len, self.header_len)
         self.is_legacy = True
 
     def _parse_hdr(self):
         if self.rom_size == 0:
-            #TODO throw exception
+            # TODO throw exception
             self.buffer_size = self.size_signed + self.header_len
             print_warning("ERROR. rom size is zero")
         else:
@@ -479,7 +575,6 @@ class HeaderEntry(Entry):
             sig_start = self.get_address() + self.rom_size - self.signature_len
             # print_warning(f"Signature at: 0x{buf_start:x} sig_start: 0x{sig_start:x}")
             self.signature = NestedBuffer(self, self.signature_len, sig_start - buf_start)
-
 
         if self.compressed:
             if self.zlib_size == 0:
@@ -495,7 +590,6 @@ class HeaderEntry(Entry):
 
         self.body = NestedBuffer(self, len(self) - self.header_len - self.signature_len, self.header_len)
         self.is_legacy = False
-
 
     def get_readable_version(self):
         return '.'.join([hex(b)[2:].upper() for b in self.version])
@@ -565,8 +659,6 @@ class HeaderEntry(Entry):
 
         return self.UNWRAPPED_IKEK_ZEN_PLUS
 
-
-
     def shannon_entropy(self):
         return shannon(self.body[:])
 
@@ -578,7 +670,11 @@ class HeaderEntry(Entry):
             print(f"Get bytes failed at entry: 0x{self.get_address():x} type: {self.get_readable_type()} size: 0x{self.buffer_size:x}")
         return m.hexdigest()
 
-    def sign(self,private_key):
+    def sign(self, private_key, certifying_id=None):
+        if certifying_id:
+            self.header.set_bytes(0x38, 0x10, certifying_id)
+            self.signature_fingerprint = hexlify(certifying_id)
+
         if self.compressed:
             signed_data = self.get_decompressed()[:self.size_signed + self.header_len]
         elif self.encrypted:
@@ -587,12 +683,11 @@ class HeaderEntry(Entry):
         else:
             signed_data = self[:self.size_signed + self.header_len]
 
-
         if private_key.key_size == 2048 :
-            hash = hashes.SHA256()
+            _hash = hashes.SHA256()
             salt_length = 32
         elif private_key.key_size == 4096:
-            hash = hashes.SHA384()
+            _hash = hashes.SHA384()
             salt_length = 48
         else:
             print_warning(f"Unknown key_size: {private_key.key_size}")
@@ -602,26 +697,24 @@ class HeaderEntry(Entry):
             signature = private_key.sign(
               signed_data,
               padding.PSS(
-                  mgf=padding.MGF1(hash),
+                  mgf=padding.MGF1(_hash),
                   salt_length=salt_length
               ),
-              hash
+              _hash
             )
         except:
             print_warning("Signing exception")
             return False
 
-        # Special fingerprint, denote that this entry was resigned with a custom key
-        self.signature_fingerprint = hexlify(4 * b'\xDE\xAD\xBE\xEF')
-        self.signature = signature
+        self.signature.set_bytes(0, len(signature), signature)
         return True
 
-    def verify_signature(self):
+    def verify_signature(self, pubkey=None):
         # Note: This does not work if an entry was compressed AND encrypted.
         # However, we have not yet seen such entry.
 
         # Only verify signature if we actually have a signature
-        if self.signature == None:
+        if self.signature is None:
             return False
 
         if self.compressed:
@@ -631,36 +724,43 @@ class HeaderEntry(Entry):
         else:
             signed_data = self.get_bytes()[:self.size_signed + self.header_len]
 
-        try:
-            pubkey_der_encoded = self.pubkey.get_der_encoded()
-        except AttributeError:
-            print_warning(f"Entry {self.get_readable_type()} is signed, but corresponding pubkey was not found ({self.get_readable_signed_by()})")
-            return False
+        if pubkey:
+            if len(self.signature) == 0x100:
+                hash = hashes.SHA256()
+                salt_len = 32
+            elif len(self.signature) == 0x200:
+                hash = hashes.SHA384()
+                salt_len = 48
+            else:
+                print_warning("Weird signature len")
+                return False
 
-        crypto_pubkey = load_der_public_key(pubkey_der_encoded, backend=default_backend())
+            try:
+                pubkey.verify(
+                    self.signature.get_bytes(),
+                    signed_data,
+                    padding.PSS(
+                        mgf=padding.MGF1(hash),
+                        salt_length=salt_len
+                    ),
+                    hash
+                )
+            except InvalidSignature:
+                return False
 
+            return True
 
-        if len(self.signature) == 0x100:
-            hash = hashes.SHA256()
-            salt_len = 32
-        elif len(self.signature) == 0x200:
-            hash = hashes.SHA384()
-            salt_len = 48
         else:
-            print_warning("Weird signature len")
-            return False
+            for pubkey in self.pubkeys:
+                try:
+                    pubkey_der_encoded = pubkey.get_der_encoded()
+                except AttributeError:
+                    print_warning(f"Entry {self.get_readable_type()} is signed, but corresponding pubkey was not found"
+                                  f" ({self.get_readable_signed_by()})")
+                    continue
+                crypto_pubkey = load_der_public_key(pubkey_der_encoded, backend=default_backend())
+                if self.verify_signature(crypto_pubkey):
+                    return True
+        return False
 
-        try:
-            crypto_pubkey.verify(
-                self.signature.get_bytes(),
-                signed_data,
-                padding.PSS(
-                    mgf=padding.MGF1(hash),
-                    salt_length=salt_len
-                ),
-                hash
-            )
-        except InvalidSignature:
-            return False
 
-        return True

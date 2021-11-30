@@ -122,7 +122,7 @@ class Directory(NestedBuffer):
                                           entry_fields['offset'],
                                           self.blob)
                 if isinstance(entry, PubkeyEntry):
-                    self.blob.pubkeys[entry.key_id] = entry
+                    self.blob.add_pubkey(entry)
                 else:
                     print_warning(f"ERROR id is not a pubkey")
 
