@@ -47,6 +47,7 @@ class Directory(NestedBuffer):
     }
 
     _ENTRY_TYPES_SECONDARY_DIR = [0x40, 0x70]
+    _ENTRY_TYPES_PUBKEY = [0x0, 0x9, 0xa, 0x5, 0xd]
 
     def __init__(self, parent_buffer, buffer_offset: int, type_: str, blob, psptool):
         self.parent_buffer = parent_buffer
@@ -131,7 +132,7 @@ class Directory(NestedBuffer):
             # if len(self.blob) == 0x800000:
             #     entry_fields['offset'] &= 0x7FFFFF
 
-            if entry_fields['type'] in [0x0, 0x9, 0xa, 0x5, 0xd]:
+            if entry_fields['type'] in self._ENTRY_TYPES_PUBKEY:
                 entry = Entry.from_fields(self, self.parent_buffer,
                                           entry_fields['type'],
                                           entry_fields['size'],
@@ -141,7 +142,7 @@ class Directory(NestedBuffer):
                 if isinstance(entry, PubkeyEntry):
                     self.blob.add_pubkey(entry)
                 else:
-                    self.psptool.ph.print_warning(f"ERROR id is not a pubkey")
+                    self.psptool.ph.print_warning(f"Entry type indicates pubkey but could not create PubkeyEntry")
 
     def _parse_entries(self):
         for entry_bytes in self.body.get_chunks(self._entry_size):

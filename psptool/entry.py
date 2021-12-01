@@ -32,7 +32,7 @@ from math import ceil
 from hashlib import md5
 
 from cryptography.hazmat.primitives.serialization import load_der_public_key
-from cryptography.hazmat.primitives.serialization import load_pem_public_key, load_pem_private_key
+from cryptography.hazmat.primitives.serialization import load_pem_private_key
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.asymmetric import padding
 from cryptography.hazmat.primitives import hashes
@@ -128,6 +128,7 @@ class Entry(NestedBuffer):
     @classmethod
     def from_fields(cls, parent_directory, parent_buffer, type_, size, offset, blob, psptool, destination: int = None):
         # Try to parse these ID's as a key entry
+        # todo: consolidate these constants with Directory._ENTRY_TYPES_PUBKEY
         PUBKEY_ENTRY_TYPES = [0x0, 0x9, 0xa, 0x5, 0xd, 0x43, 0x4e, 0xdead]
 
         # Types known to have no PSP HDR
@@ -163,11 +164,11 @@ class Entry(NestedBuffer):
 
         elif type_ in PUBKEY_ENTRY_TYPES:
             # Option 2: it's a PubkeyEntry
-
             try:
                 new_entry = PubkeyEntry(parent_directory, parent_buffer, type_, size, offset, blob, psptool)
             except:
                 psptool.ph.print_warning(f"Couldn't parse pubkey entry 0x{type_:x}")
+
         if new_entry is None:
             # Option 3: it's a HeaderEntry (most common)
             if size == 0:
@@ -259,10 +260,11 @@ class Entry(NestedBuffer):
         self.blob = blob
         self.psptool = psptool
         self.type = type_
+        self.is_inline = False
+        self.parent_entry = None  # will be set in Blob._find_inline_pubkey_parents if is_inline
         self.destination = destination
         self.references = [parent_directory] if parent_directory is not None else []
         self.parent_directory = parent_directory
-
 
         self.compressed = False
         self.signed = False
@@ -336,9 +338,6 @@ class Entry(NestedBuffer):
 class PubkeyEntry(Entry):
     def _parse(self):
         """ SEV spec B.1 """
-
-        self.is_inline = False
-        self.parent_entry = None  # will be set in Blob._find_inline_pubkey_parents
 
         pubexp_size = struct.unpack('<I', self[0x38:0x3c])[0] // 8
         modulus_size = struct.unpack('<I', self[0x3c:0x40])[0] // 8
@@ -525,11 +524,8 @@ class HeaderEntry(Entry):
         self.unknown_bool = struct.unpack('<I', self.header[0x7c:0x80])[0]
         self.wrapped_key = hexlify(self.header[0x80:0x90])
 
-
         # TODO: Take care of headers with only 0xfff...
-
         # TODO if zlib_size == 0 try size_signed
-
 
         assert(self.compressed in [0, 1])
         assert(self.encrypted in [0, 1])
@@ -562,7 +558,6 @@ class HeaderEntry(Entry):
             self.psptool.ph.print_warning("ERROR: Signed but no key id present")
 
     def _parse_legacy_hdr(self):
-
         self.buffer_size = self.size_signed + self.header_len
 
         if self.compressed:
@@ -575,7 +570,6 @@ class HeaderEntry(Entry):
             # TODO create nested buffer with uncompressed signature
             # raw_bytes = zlib.decompress(self[0x100:])
             self.signature = None
-
 
         self.body = NestedBuffer(self, len(self) - self.size_signed - self.header_len, self.header_len)
         self.is_legacy = True
@@ -594,11 +588,10 @@ class HeaderEntry(Entry):
             # self.psptool.ph.print_warning(f"Signature at: 0x{buf_start:x} sig_start: 0x{sig_start:x}")
             self.signature = NestedBuffer(self, self.signature_len, sig_start - buf_start)
 
-
         if self.compressed:
             if self.zlib_size == 0:
                 # Todo throw exception
-                print_warning(f"ERROR: Weird entry. Address 0x{self.get_address():x}")
+                self.psptool.ph.print_warning(f"ERROR: Weird entry. Address 0x{self.get_address():x}")
 
         # Get IV and wrapped KEY from entry header
         if self.encrypted:
@@ -609,7 +602,6 @@ class HeaderEntry(Entry):
 
         self.body = NestedBuffer(self, len(self) - self.header_len - self.signature_len, self.header_len)
         self.is_legacy = False
-
 
     def get_readable_version(self):
         return '.'.join([hex(b)[2:].upper() for b in self.version])

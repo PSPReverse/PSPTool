@@ -99,6 +99,18 @@ class NestedBuffer:
     def get_chunks(self, size: int, offset: int = 0):
         return chunker(self[offset:], size)
 
+
+# from https://stackoverflow.com/a/39358140
+class RangeDict(dict):
+    def __getitem__(self, item):
+        if type(item) != range:
+            for key in self:
+                if item in key:
+                    return self[key]
+        else:
+            return super().__getitem__(item)
+
+
 class PrintHelper:
     def __init__(self, is_verbose):
         self.is_verbose = is_verbose

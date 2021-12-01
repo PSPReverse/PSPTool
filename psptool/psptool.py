@@ -96,13 +96,15 @@ class PSPTool:
             if entry.compressed:
                 info.append('compressed')
             if entry.signed:
-                info.append('signed(%s)' % entry.get_readable_signed_by())
+                info.append(f'signed({entry.get_readable_signed_by()})')
                 if entry.verify_signature():
                     info.append('verified')
             if entry.is_legacy:
                 info.append('legacy header')
             if entry.encrypted:
                 info.append('encrypted')
+            if entry.is_inline:
+                info.append(f'inline(0x{entry.parent_entry.get_address():x})')
 
             all_values = [
                 '',

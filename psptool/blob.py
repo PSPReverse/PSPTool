@@ -19,19 +19,10 @@ import binascii
 
 from typing import List
 
-from .utils import NestedBuffer
+from .utils import NestedBuffer, RangeDict
 from .entry import Entry, PubkeyEntry
 from .fet import Fet
 
-# from https://stackoverflow.com/a/39358140
-class RangeDict(dict):
-    def __getitem__(self, item):
-        if type(item) != range:
-            for key in self:
-                if item in key:
-                    return self[key]
-        else:
-            return super().__getitem__(item)
 
 class Blob(NestedBuffer):
     _FIRMWARE_ENTRY_MAGIC = b'\xAA\x55\xAA\x55'
@@ -108,14 +99,13 @@ class Blob(NestedBuffer):
             key.parent_entry = self.range_dict[key.get_address()]
 
     def _construct_range_dict(self):
-
         directories = [directory for fet in self.fets for directory in fet.directories]
         directory_entries = [directory.entries for directory in directories]
 
         # flatten list of lists
         all_entries = [entry for sublist in directory_entries for entry in sublist]
 
-        # create RangeDict in order to find entry types for addresses
+        # create RangeDict in order to find entries, directories and fets for a given address
         self.range_dict = RangeDict({
             ** {
                 range(entry.get_address(), entry.get_address() + entry.buffer_size):  # key is start and end address of the entry
@@ -132,22 +122,19 @@ class Blob(NestedBuffer):
             }
         })
 
-
     def all_pubkeys(self):
         return sum(self.pubkeys.values(), start=list())
 
     def get_pubkeys(self, key_id):
-
         if not self.pubkeys.get(key_id):
             self.pubkeys[key_id] = list(self._find_pubkeys(key_id))
 
         return self.pubkeys[key_id]
 
     def add_pubkey(self, pubkey_entry):
-
-        # search for inline keys if that hasn't been done yet
+        # search for related inline keys in the entire blob if that hasn't been done yet
         if not self.pubkeys.get(pubkey_entry.key_id):
-            self.pubkeys[pubkey_entry.key_id] = list(self._find_pubkeys(pubkey_entry.key_id))
+            self.pubkeys[pubkey_entry.key_id] = self._find_pubkeys(pubkey_entry.key_id)
 
         keys = self.pubkeys[pubkey_entry.key_id]
         # if this entry has been found as an "inline" pubkey, remove it
@@ -160,9 +147,9 @@ class Blob(NestedBuffer):
         """ Try to find a pubkey anywhere in the blob.
         The pubkey is identified by its fingerprint. If found, the pubkey is
         added to the list of pubkeys of the blob """
+        found_pubkeys = []
 
         m = re.finditer(re.escape(binascii.a2b_hex(fp)), self.raw_blob)
-
         for index in m:
             start = index.start() - 4
             if int.from_bytes(self.raw_blob[start:start+4], 'little') == 1:
@@ -186,13 +173,23 @@ class Blob(NestedBuffer):
                         size += 0x200
 
                 try:
-                    res = PubkeyEntry(self, self, 0xdead, size, start, self, self.psptool)
-                    res.is_inline = True
-                    yield res
+                    entry = PubkeyEntry(self, self, 0xdead, size, start, self, self.psptool)
+                    # todo: use from_fields factory instead of PubkeyEntry init
+                    # entry = Entry.from_fields(self, self.parent_buffer,
+                    #                           0xdead,
+                    #                           size,
+                    #                           start,
+                    #                           self,
+                    #                           self.psptool)
+                    assert isinstance(entry, PubkeyEntry)
+                    entry.is_inline = True
+                    found_pubkeys.append(entry)
                 except Entry.ParseError:
                     self.psptool.ph.print_warning(f"_find_pubkey: Entry parse error at 0x{start:x}")
                 except:
-                    self.psptool.ph.print_warning(f"Error couldn't convert key at: 0x{start:x}")
+                    self.psptool.ph.print_warning(f"_find_pubkey: Error couldn't convert key at: 0x{start:x}")
+
+        return found_pubkeys
 
     def get_entries_by_type(self) -> List[Entry]:
         entries = []
