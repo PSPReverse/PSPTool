@@ -263,6 +263,7 @@ class Entry(NestedBuffer):
         self.is_inline = False
         self.parent_entry = None  # will be set in Blob._find_inline_pubkey_parents if is_inline
         self.destination = destination
+        # todo: deduplicate Entry objects pointing to the same address (in `from_fields`?)
         self.references = [parent_directory] if parent_directory is not None else []
         self.parent_directory = parent_directory
 

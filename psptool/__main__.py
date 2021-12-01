@@ -156,6 +156,7 @@ def main():
                 sub_binary = f.read()
 
             entry = psp.blob.fets[0].directories[args.directory_index].entries[args.entry_index]
+            # Keep the existing entry's address, but adapt its size
             entry.move_buffer(entry.get_address(), len(sub_binary))
             entry.set_bytes(0, len(sub_binary), sub_binary)
 

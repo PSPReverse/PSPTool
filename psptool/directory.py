@@ -83,6 +83,8 @@ class Directory(NestedBuffer):
                 # print_warning(f"Secondary dir at 0x{entry.buffer_offset:x}")
                 self.secondary_directory_address = entry.buffer_offset
 
+        self.verify_checksum()
+
     def __repr__(self):
         return f'Directory(address={hex(self.get_address())}, type={self.type}, magic={self.magic}, count={self.count})'
 
@@ -176,6 +178,14 @@ class Directory(NestedBuffer):
             self.entries.append(entry)
             self.blob.unique_entries.add(entry)
 
+    def verify_checksum(self):
+        data = self[0x8:]
+        checksum = self.checksum.get_bytes()
+        calculated_checksum = fletcher32(data)
+        if checksum == calculated_checksum:
+            return
+        self.psptool.ph.print_warning(f"Could not verify checksum for directory {self}")
+
     def update_checksum(self):
         data = self[0x8:]  # checksum is calculated from after the checksum field in the header
         self.checksum.set_bytes(0, 4, fletcher32(data))
@@ -190,11 +200,13 @@ class Directory(NestedBuffer):
         assert(entry_index is not None)
 
         # update type, size, offset, but not rsv0, rsv1 and rsv2
-        offset |= 0xFF000000
+        # todo: apparently this masking is not needed anymore? investigate: `offset |= 0xFF000000`
+
         entry_bytes = b''.join([struct.pack('<I', value) for value in [type_, size, offset]])
         self.body.set_bytes(
             self._ENTRY_SIZES[self.magic] * entry_index,
-            4 * 6,
+            # todo: figure out the actual directory entry width here (sometimes its just 3 values, sometimes 6?)
+            4 * 3,
             entry_bytes
         )
 

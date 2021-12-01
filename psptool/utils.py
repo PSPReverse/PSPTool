@@ -27,6 +27,7 @@ from cryptography.hazmat.backends import default_backend
 class ObligingArgumentParser(argparse.ArgumentParser):
     """ Display the full help message whenever there is something wrong with the arguments.
         (from https://groups.google.com/d/msg/argparse-users/LazV_tEQvQw/xJhBOm1qS5IJ) """
+
     def error(self, message):
         sys.stderr.write('Error: %s\n' % message)
         self.print_help()
@@ -38,7 +39,7 @@ class NestedBuffer:
         self.parent_buffer = parent_buffer
         self.buffer_size = buffer_size
         self.buffer_offset = buffer_offset
-        assert(self.buffer_size <= self.buffer_offset + self.buffer_size)
+        assert (self.buffer_size <= self.buffer_offset + self.buffer_size)
 
     def __len__(self):
         return self.buffer_size
@@ -48,7 +49,7 @@ class NestedBuffer:
             new_slice = self._offset_slice(item)
             return self.parent_buffer[new_slice]
         else:
-            assert(isinstance(item, int))
+            assert (isinstance(item, int))
             return self.parent_buffer[item]
 
     def __setitem__(self, key, value):
@@ -56,7 +57,7 @@ class NestedBuffer:
             new_slice = self._offset_slice(key)
             self.parent_buffer[new_slice] = value
         else:
-            assert(isinstance(key, int))
+            assert (isinstance(key, int))
             self.parent_buffer[self.buffer_offset + key] = value
 
     def _offset_slice(self, old_slice):
@@ -94,6 +95,7 @@ class NestedBuffer:
         return bytes(self[offset:offset + size])
 
     def set_bytes(self, address: int, size: int, value):
+        assert len(value) == size, "set_bytes: value length does not match size argument"
         self[address:address + size] = value
 
     def get_chunks(self, size: int, offset: int = 0):
@@ -148,9 +150,9 @@ def chunker(seq, size):
 def rstrip_padding(bytestring):
     """ Takes a bytestring and strips trailing 0xFFFFFFFF dwords. """
     i = 0
-    while bytestring[-(4+i):len(bytestring)-i] == b'\xff\xff\xff\xff':
+    while bytestring[-(4 + i):len(bytestring) - i] == b'\xff\xff\xff\xff':
         i += 4
-    return bytestring[:len(bytestring)-i]
+    return bytestring[:len(bytestring) - i]
 
 
 def shannon(s):
@@ -201,8 +203,10 @@ def zlib_find_header(s):
 
     return -1
 
+
 def zlib_compress(s):
-    return zlib.compress(s,9)
+    return zlib.compress(s, 9)
+
 
 def zlib_decompress(s):
     """ Checks s for the first appearance of a zlib header and returns the uncompressed start of s as well as the
@@ -219,7 +223,8 @@ def zlib_decompress(s):
 
     return s
 
-def decrypt_ecb(data,key):
+
+def decrypt_ecb(data, key):
     """ Decrypts 'data' with 'key' using AES-128 in ECB mode.
     Return the decrypted data. """
     backend = default_backend()
@@ -228,22 +233,25 @@ def decrypt_ecb(data,key):
     ecb_decryptor = cipher_ecb.decryptor()
     return ecb_decryptor.update(data) + ecb_decryptor.finalize()
 
-def decrypt_cbd(data,iv,key):
+
+def decrypt_cbd(data, iv, key):
     """ Decrypts 'data' with 'key' using AES-128 in CBC mode.
     Returns the decrypted data. """
 
     backend = default_backend()
     cipher_cbc = Cipher(algorithms.AES(key), modes.CBC(iv), backend=backend)
-    cbc_decryptor= cipher_cbc.decryptor()
+    cbc_decryptor = cipher_cbc.decryptor()
     return cbc_decryptor.update(data) + cbc_decryptor.finalize()
 
-def decrypt(data,entry_key,unwrapped_ikek,iv):
+
+def decrypt(data, entry_key, unwrapped_ikek, iv):
     """ Decrypts an entry. The entry key is stored at offset 0x80 of the respective header,
     the IV is stored at offset 0x20. An already unwrapped IKEK is required to perform this
     operation. """
-    unwrapped_entry_key = decrypt_ecb(entry_key,unwrapped_ikek)
+    unwrapped_entry_key = decrypt_ecb(entry_key, unwrapped_ikek)
 
     return decrypt_cbd(data, iv, unwrapped_entry_key)
+
 
 def fletcher32(s):
     c0 = 0xFFFF
