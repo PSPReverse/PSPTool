@@ -20,6 +20,7 @@ import json
 from .entry import HeaderEntry
 from .blob import Blob
 from .utils import PrintHelper
+from .cert_tree import CertificateTree
 
 
 class PSPTool:
@@ -37,6 +38,7 @@ class PSPTool:
         self.ph = PrintHelper(verbose)
 
         self.blob = Blob(rom_bytes, len(rom_bytes), self)
+        self.cert_tree = CertificateTree.from_blob(self.blob)
         self.filename = None
 
     def __repr__(self):
