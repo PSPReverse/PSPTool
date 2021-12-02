@@ -1,8 +1,12 @@
-
 from abc import ABC, abstractmethod
 
+from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.hazmat.primitives.serialization import load_pem_private_key
+from cryptography.hazmat.primitives.asymmetric import padding
+from cryptography.hazmat.primitives import hashes
 
-##### Abstract classes
+# Abstract classes
+
 
 class KeyType(ABC):
 
@@ -30,6 +34,7 @@ class PublicKey(ABC):
     def get_crypto_material(self) -> bytes:
         pass
 
+
 class PrivateKey(ABC):
 
     @abstractmethod
@@ -45,16 +50,17 @@ class PrivateKey(ABC):
         pass
 
 
-
-##### Global KeyType Registry
+# Global KeyType Registry
 
 _key_types = dict()
 
-def key_type(name: str) -> KeyType:
+
+def get_key_type(name: str) -> KeyType:
     try:
         return _key_types[name]
-    except:
+    except KeyError:
         raise Exception(f'There is no KeyType with the name "{name}"!')
+
 
 def add_key_type(name: str, key_type: KeyType):
     if _key_types.get(name):
@@ -62,14 +68,8 @@ def add_key_type(name: str, key_type: KeyType):
     _key_types[name] = key_type
 
 
+# KeyType Implementations
 
-##### KeyType Implementations
-
-from cryptography.hazmat.primitives.asymmetric import rsa
-from cryptography.hazmat.primitives.serialization import load_pem_private_key
-from cryptography.hazmat.backends import default_backend
-from cryptography.hazmat.primitives.asymmetric import padding
-from cryptography.hazmat.primitives import hashes
 
 class RsaKeyType(KeyType):
 
@@ -84,7 +84,6 @@ class RsaKeyType(KeyType):
         else:
             raise Exception(f'Unknown rsa key length: {key_size}!')
 
-
     def padding(self):
         return padding.PSS(
             mgf=padding.MGF1(self.hash_algorithm),
@@ -97,18 +96,22 @@ class RsaKeyType(KeyType):
     def make_public_key(self, crypto_material: bytes) -> PublicKey:
         return RsaPublicKey.from_crypto_material(self, crypto_material)
 
+
 add_key_type("rsa2048", RsaKeyType(2048))
 add_key_type("rsa4096", RsaKeyType(4096))
 
-class RsaPrivateKey(ABC):
+
+class RsaPrivateKey(PrivateKey):
 
     def __init__(self, key_type: RsaKeyType, private_key):
         assert private_key.key_size == key_type.key_size, f'Key has the wrong size: {private_key.key_size} != {key_type.key_size}'
         self._key_type = key_type
         self.private_key = private_key
 
+    @staticmethod
     def from_file(key_type: RsaKeyType, filename: str, password: str = None) -> PrivateKey:
-        return RsaPrivateKey(key_type, load_pem_private_key(filename, password=password))
+        with open(filename, 'rb') as f:
+            return RsaPrivateKey(key_type, load_pem_private_key(f.read(), password=password))
 
     def key_type(self) -> KeyType:
         return self._key_type
@@ -120,21 +123,22 @@ class RsaPrivateKey(ABC):
             self._key_type.hash_algorithm
         )
 
-    def get_public_key(self) -> PrivateKey:
-        return RsaPublicKey(self.key_type, self.private_key.public_key())
+    def get_public_key(self) -> PublicKey:
+        return RsaPublicKey(self._key_type, self.private_key.public_key())
 
 
-class RsaPublicKey(ABC):
+class RsaPublicKey(PublicKey):
 
     def __init__(self, key_type: RsaKeyType, public_key):
         assert public_key.key_size == key_type.key_size, f'Key has the wrong size: {public_key.key_size} != {key_type.key_size}'
         self.public_key = public_key
         self._key_type = key_type
 
-    def from_crypto_material(key_type: RsaKeyType, crypto_material: bytes) -> PublicKey:
-
+    @classmethod
+    def from_crypto_material(cls, key_type: RsaKeyType, crypto_material: bytes) -> PublicKey:
         key_size_bytes = key_type.key_size >> 3
-        assert len(crypto_material) == 2*key_size_bytes, f'Crypto material has wrong size: {len(crypto_material)} != {2*key_size_bytes}!'
+        assert len(
+            crypto_material) == 2 * key_size_bytes, f'Crypto material has wrong size: {len(crypto_material)} != {2 * key_size_bytes}!'
 
         pubexp = int.from_bytes(crypto_material[:key_size_bytes], 'little')
         modulus = int.from_bytes(crypto_material[key_size_bytes:], 'little')
@@ -147,7 +151,6 @@ class RsaPublicKey(ABC):
 
     # Raises an exception if the signature is not valid
     def verify_blob(self, blob: bytes, signature: bytes):
-
         signature = bytearray(signature)
         signature.reverse()
         signature = bytes(signature)
@@ -160,7 +163,6 @@ class RsaPublicKey(ABC):
         )
 
     def get_crypto_material(self):
-
         key_size_bytes = self._key_type.key_size >> 3
 
         numbers = self.public_key.public_numbers()
@@ -170,21 +172,18 @@ class RsaPublicKey(ABC):
         return pubexp + modulus
 
 
-
-##### Helper Functions
+# Helper Functions
 
 def load_private_key(filename: str, password: str = None) -> PrivateKey:
-
     try:
-        private_key = load_pem_private_key(filename, password=password)
+        with open(filename, 'rb') as f:
+            private_key = load_pem_private_key(f.read(), password=password)
     except:
         raise Exception(f'Could not load private key from {filename}!')
 
     if private_key.key_size == 2048:
-        return RsaPrivateKey(key_type("rsa2048"), private_key)
+        return RsaPrivateKey(get_key_type("rsa2048"), private_key)
     if private_key.key_size == 4096:
-        return RsaPrivateKey(key_type("rsa4096"), private_key)
+        return RsaPrivateKey(get_key_type("rsa4096"), private_key)
 
     raise Exception(f'Cannot figure out KeyType for {private_key}!')
-
-

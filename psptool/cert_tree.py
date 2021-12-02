@@ -1,13 +1,11 @@
-
 from binascii import hexlify
 from .entry import HeaderEntry, PubkeyEntry
 from .utils import NestedBuffer, RangeDict
 from .crypto import KeyType, PublicKey, PrivateKey
 from . import crypto
 
+# Errors
 
-
-###### Errors
 
 class NoCertifyingKey(Exception):
     def __init__(self, signed_entity):
@@ -17,6 +15,7 @@ class NoCertifyingKey(Exception):
         key_id = self.signed_entity.certifying_key
         return f'There is no key with id {key_id.as_string()}, so {self.signed_entity} could not be verified!'
 
+
 class SignatureInvalid(Exception):
     def __init__(self, signed_entity, pubkey: PublicKey):
         self.signed_entity = signed_entity
@@ -24,6 +23,7 @@ class SignatureInvalid(Exception):
 
     def __str__(self):
         return f'Signature for {self.signed_entity} is not signed by {self.pubkey}!'
+
 
 class NonUniqueSignedEntity(Exception):
     def __init__(self, existing, new):
@@ -35,6 +35,7 @@ class NonUniqueSignedEntity(Exception):
         end = start + self.existing.body.buffer_size
         return f'There was anlready a SignedEntity at {hex(start)}:{hex(end)} (existing={self.existing}, new={self.new})!'
 
+
 class NonUniquePublicKeyEntity(Exception):
     def __init__(self, existing, new):
         self.existing = existing
@@ -44,9 +45,8 @@ class NonUniquePublicKeyEntity(Exception):
         start = self.existing.key_id.get_address()
         return f'There was anlready a PublicKeyEntity with key_id at {hex(start)} (existing={self.existing}, new={self.new})!'
 
+# Tree Types
 
-
-###### Tree Types
 
 class KeyId(NestedBuffer):
 
@@ -56,13 +56,14 @@ class KeyId(NestedBuffer):
     def __repr__(self):
         return f'KeyId({self.as_string()})'
 
+
 class Signature(NestedBuffer):
 
     def from_nested_buffer(nb):
         return Signature(nb.parent_buffer, nb.buffer_size, buffer_offset=nb.buffer_offset)
 
-class SignedEntity:
 
+class SignedEntity:
     def __init__(self, body: NestedBuffer, certifying_id: KeyId, signature: Signature):
         self.body = body
         self.certifying_id = certifying_id
@@ -142,9 +143,9 @@ class PublicKeyEntity:
             body_len -= pke.signature_len
 
         if body_len == 0x240:
-            key_type = crypto.key_type('rsa2048')
+            key_type = crypto.get_key_type('rsa2048')
         elif body_len == 0x440:
-            key_type = crypto.key_type('rsa4096')
+            key_type = crypto.get_key_type('rsa4096')
         else:
             raise Exception(f'Unknown PubkeyEntry body length ({hex(body_len)}) for {pke}')
 
@@ -188,12 +189,8 @@ class PublicKeyEntity:
         self.replace_crypto_material(pubkey.get_crypto_material())
 
 
-
-
 class CertificateTree:
-
     def __init__(self):
-
         # key_ids we have seen
         self.ids = set()
         # pubkeys by key id
@@ -206,7 +203,6 @@ class CertificateTree:
         self.signed_ranges = RangeDict()
 
     def add_signed_entity(self, signed_entity: SignedEntity):
-
         start_address = signed_entity.body.get_address()
         address_range = range(start_address, start_address + signed_entity.body.buffer_size)
 
@@ -242,7 +238,6 @@ class CertificateTree:
             pubkey.certified_entities.add(signed_entity)
 
     def add_pubkey_entity(self, pubkey: PublicKeyEntity):
-
         start_address = pubkey.key_id.get_address()
 
         # check if we already have this one
@@ -287,7 +282,6 @@ class CertificateTree:
         return None
 
     def add_pubkey_entry(self, pubkey_entry) -> (PublicKeyEntity, SignedEntity):
-
         signed_entity = SignedEntity._from_pubkey_entry(pubkey_entry)
         if signed_entity:
             try:
@@ -306,6 +300,7 @@ class CertificateTree:
 
         return pubkey, signed_entity
 
+    @staticmethod
     def from_blob(blob):
         ct = CertificateTree()
 
@@ -320,5 +315,3 @@ class CertificateTree:
         # TODO: inline keys
 
         return ct
-
-
