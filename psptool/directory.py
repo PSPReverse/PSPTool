@@ -199,14 +199,14 @@ class Directory(NestedBuffer):
 
         assert(entry_index is not None)
 
-        # update type, size, offset, but not rsv0, rsv1 and rsv2
-        # todo: apparently this masking is not needed anymore? investigate: `offset |= 0xFF000000`
+        # apparently this masking is not needed anymore: offset |= 0xFF000000
 
+        # update type, size, offset (but not rsv0 (nor rsv1 nor rsv2 in $BHD/$BLD directories))
         entry_bytes = b''.join([struct.pack('<I', value) for value in [type_, size, offset]])
+
         self.body.set_bytes(
-            self._ENTRY_SIZES[self.magic] * entry_index,
-            # todo: figure out the actual directory entry width here (sometimes its just 3 values, sometimes 6?)
-            4 * 3,
+            self._entry_size * entry_index,
+            len(entry_bytes),
             entry_bytes
         )
 

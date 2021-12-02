@@ -247,8 +247,6 @@ class Entry(NestedBuffer):
             #     sig = private_key.sign(
 
             return entry
-
-
         else:
             raise Entry.TypeError()
 
@@ -398,8 +396,7 @@ class PubkeyEntry(Entry):
                b'\n'.join(chunker(b64encode(self.get_der_encoded()), 64)) + \
                b'\n-----END PUBLIC KEY-----\n'
 
-    def sign(self, private_key, certifying_id = None):
-
+    def sign(self, private_key, certifying_id=None):
         if certifying_id:
             self.set_bytes(0x14, 0x10, certifying_id)
             self.certifying_id = hexlify(certifying_id)
@@ -672,8 +669,6 @@ class HeaderEntry(Entry):
 
         return self.UNWRAPPED_IKEK_ZEN_PLUS
 
-
-
     def shannon_entropy(self):
         return shannon(self.body[:])
 
@@ -697,7 +692,6 @@ class HeaderEntry(Entry):
             return False
         else:
             signed_data = self[:self.size_signed + self.header_len]
-
 
         if private_key.key_size == 2048 :
             _hash = hashes.SHA256()
