@@ -270,5 +270,8 @@ def fletcher32(s):
     c0 = (c0 & 0xFFFF) + (c0 >> 16)
     c1 = (c1 & 0xFFFF) + (c1 >> 16)
 
+    c0 = (c0 & 0xFFFF) + (c0 >> 16)
+    c1 = (c1 & 0xFFFF) + (c1 >> 16)
+
     checksum = (c1 << 16) | c0
     return struct.pack('<I', checksum)
