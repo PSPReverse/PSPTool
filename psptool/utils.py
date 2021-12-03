@@ -50,7 +50,7 @@ class NestedBuffer:
             return self.parent_buffer[new_slice]
         else:
             assert (isinstance(item, int))
-            return self.parent_buffer[item]
+            return self.parent_buffer[self.buffer_offset + item]
 
     def __setitem__(self, key, value):
         if isinstance(key, slice):
@@ -59,6 +59,10 @@ class NestedBuffer:
         else:
             assert (isinstance(key, int))
             self.parent_buffer[self.buffer_offset + key] = value
+
+    def __repr__(self):
+        return f'{self.__class__.__name__}(address={hex(self.get_address())}, buffer_size={hex(self.buffer_size)}, ' \
+               f'buffer_offset={hex(self.buffer_offset)}, {self.parent_buffer=})'
 
     def _offset_slice(self, old_slice):
         if old_slice.start is None:
@@ -130,9 +134,9 @@ class PrintHelper:
 
     def print_info(self, arg0):
         """ Wrapper function to print info to stderr, so we don't interfere with e.g. extraction output. """
-        if self.is_verbose:
-            arg0 = 'Info: ' + arg0 + '\n'
-            sys.stderr.write(arg0)
+        # if self.is_verbose:
+        arg0 = 'Info: ' + arg0 + '\n'
+        sys.stderr.write(arg0)
 
 
 def round_to_int(n, i):

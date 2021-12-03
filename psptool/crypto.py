@@ -104,7 +104,8 @@ add_key_type("rsa4096", RsaKeyType(4096))
 class RsaPrivateKey(PrivateKey):
 
     def __init__(self, key_type: RsaKeyType, private_key):
-        assert private_key.key_size == key_type.key_size, f'Key has the wrong size: {private_key.key_size} != {key_type.key_size}'
+        assert private_key.key_size == key_type.key_size, f'Key has the wrong size: {private_key.key_size} != ' \
+                                                          f'{key_type.key_size}'
         self._key_type = key_type
         self.private_key = private_key
 
@@ -130,7 +131,8 @@ class RsaPrivateKey(PrivateKey):
 class RsaPublicKey(PublicKey):
 
     def __init__(self, key_type: RsaKeyType, public_key):
-        assert public_key.key_size == key_type.key_size, f'Key has the wrong size: {public_key.key_size} != {key_type.key_size}'
+        assert public_key.key_size == key_type.key_size, f'Key has the wrong size: {public_key.key_size} != ' \
+                                                         f'{key_type.key_size}'
         self.public_key = public_key
         self._key_type = key_type
 
@@ -138,7 +140,8 @@ class RsaPublicKey(PublicKey):
     def from_crypto_material(cls, key_type: RsaKeyType, crypto_material: bytes) -> PublicKey:
         key_size_bytes = key_type.key_size >> 3
         assert len(
-            crypto_material) == 2 * key_size_bytes, f'Crypto material has wrong size: {len(crypto_material)} != {2 * key_size_bytes}!'
+            crypto_material) == 2 * key_size_bytes, f'Crypto material has wrong size: {len(crypto_material)} != ' \
+                                                    f'{2 * key_size_bytes}!'
 
         pubexp = int.from_bytes(crypto_material[:key_size_bytes], 'little')
         modulus = int.from_bytes(crypto_material[key_size_bytes:], 'little')
@@ -151,10 +154,6 @@ class RsaPublicKey(PublicKey):
 
     # Raises an exception if the signature is not valid
     def verify_blob(self, blob: bytes, signature: bytes):
-        signature = bytearray(signature)
-        signature.reverse()
-        signature = bytes(signature)
-
         self.public_key.verify(
             signature,
             blob,

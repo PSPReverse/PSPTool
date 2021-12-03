@@ -49,7 +49,6 @@ class NonUniquePublicKeyEntity(Exception):
 
 
 class KeyId(NestedBuffer):
-
     def as_string(self) -> str:
         return hexlify(self.get_bytes())
 
@@ -58,14 +57,40 @@ class KeyId(NestedBuffer):
 
 
 class Signature(NestedBuffer):
-
-    def from_nested_buffer(nb):
+    @classmethod
+    def from_nested_buffer(cls, nb):
         return Signature(nb.parent_buffer, nb.buffer_size, buffer_offset=nb.buffer_offset)
 
 
+class ReversedSignature(Signature):
+    def __getitem__(self, item):
+        if isinstance(item, slice):
+            new_slice = self._offset_slice(item)
+            return self.parent_buffer[new_slice]
+        else:
+            assert (isinstance(item, int))
+            assert item >= 0, "Negative index not supported for ReversedSignature"
+            return self.parent_buffer[self.buffer_offset + self.buffer_size - item - 1]
+
+    def __setitem__(self, key, value):
+        if isinstance(key, slice):
+            new_slice = self._offset_slice(key)
+            self.parent_buffer[new_slice] = value
+        else:
+            assert (isinstance(key, int))
+            self.parent_buffer[self.buffer_offset + self.buffer_size - key - 1] = value
+
+    def _offset_slice(self, item):
+        return slice(
+            self.buffer_offset + self.buffer_size - (item.start or 0) - 1,
+            self.buffer_offset + self.buffer_size - (item.stop or self.buffer_size) - 1,
+            -1
+        )
+
+
 class SignedEntity:
-    def __init__(self, body: NestedBuffer, certifying_id: KeyId, signature: Signature):
-        self.body = body
+    def __init__(self, entry, certifying_id: KeyId, signature: Signature):
+        self.entry = entry
         self.certifying_id = certifying_id
         self.signature = signature
 
@@ -73,26 +98,27 @@ class SignedEntity:
         self.certifying_keys = None
         self.contained_keys = set()
 
-    def _from_pubkey_entry(pke):
+    @classmethod
+    def _from_pubkey_entry(cls, pke):
         if not pke.signed:
             return None
 
         signature_start = pke.buffer_size - pke.signature_len
         body = NestedBuffer(pke, signature_start)
         certifying_id = KeyId(body, 0x10, buffer_offset=0x14)
-        signature = Signature(pke, pke.signature_len, buffer_offset=signature_start)
+        signature = ReversedSignature(pke, pke.signature_len, buffer_offset=signature_start)
 
-        return SignedEntity(body, certifying_id, signature)
+        return SignedEntity(pke, certifying_id, signature)
 
-    def _from_header_entry(he):
+    @classmethod
+    def _from_header_entry(cls, he):
         if not he.signed or not he.signature:
             return None
 
         signature = Signature.from_nested_buffer(he.signature)
-        body = NestedBuffer(he, len(he) - len(signature))
         certifying_id = KeyId(he, 0x10, buffer_offset=0x38)
 
-        return SignedEntity(body, certifying_id, signature)
+        return SignedEntity(he, certifying_id, signature)
 
     def is_verified(self):
         try:
@@ -102,14 +128,14 @@ class SignedEntity:
         return True
 
     def verify_with_tree(self):
-        if not self.certifying_keys: # works for None or set()
+        if not self.certifying_keys:  # works for None or set()
             raise NoCertifyingKey(self)
         for key in self.certifying_keys:
             self.verify_with_pubkey(key.get_public_key())
 
     def verify_with_pubkey(self, pubkey: PublicKey):
         try:
-            res = pubkey.verify_blob(self.body.get_bytes(), self.signature.get_bytes())
+            res = pubkey.verify_blob(self.entry.get_signed_bytes(), self.signature.get_bytes())
             if res is not None and not res:
                 raise None
         except:
@@ -117,13 +143,12 @@ class SignedEntity:
 
     # resigns this entry only
     def resign_only(self, privkey: PrivateKey):
-        signature = privkey.sign_blob(self.body.get_bytes())
+        signature = privkey.sign_blob(self.entry.get_bytes())
         assert len(signature) == self.signature.buffer_size, f'Could not resign {self} with {privkey}: The new signature has the wrong length {len(signature)} != {self.signature.buffer_size}'
         self.signature.set_bytes(0, len(signature), signature)
 
 
 class PublicKeyEntity:
-
     def __init__(self, key_type: KeyType, key_id: KeyId, crypto_material: NestedBuffer):
         self.key_type = key_type
         self.key_id = key_id 
@@ -136,8 +161,8 @@ class PublicKeyEntity:
         # for lazy loading
         self._public_key = None
 
-    def _from_pubkey_entry(pke):
-
+    @classmethod
+    def _from_pubkey_entry(cls, pke):
         body_len = pke.buffer_size
         if pke.signed:
             body_len -= pke.signature_len
@@ -170,8 +195,6 @@ class PublicKeyEntity:
                 for key in entity.contained_keys
         )
 
-
-
     def _make_public_key(self) -> PublicKey:
         return self.key_type.make_public_key(self._crypto_material.get_bytes())
 
@@ -203,8 +226,8 @@ class CertificateTree:
         self.signed_ranges = RangeDict()
 
     def add_signed_entity(self, signed_entity: SignedEntity):
-        start_address = signed_entity.body.get_address()
-        address_range = range(start_address, start_address + signed_entity.body.buffer_size)
+        start_address = signed_entity.entry.get_address()
+        address_range = range(start_address, start_address + signed_entity.entry.buffer_size)
 
         # check if we already have this one
         if self.signed_ranges.get(address_range):
@@ -281,7 +304,7 @@ class CertificateTree:
             return signed_entity
         return None
 
-    def add_pubkey_entry(self, pubkey_entry) -> (PublicKeyEntity, SignedEntity):
+    def add_pubkey_entry(self, pubkey_entry: PubkeyEntry) -> (PublicKeyEntity, SignedEntity):
         signed_entity = SignedEntity._from_pubkey_entry(pubkey_entry)
         if signed_entity:
             try:
@@ -296,7 +319,7 @@ class CertificateTree:
                 self.add_pubkey_entity(pubkey)
             except NonUniquePublicKeyEntity as e:
                 pubkey = e.existing
-            pubkey_entry.signed_entity = pubkey
+            pubkey_entry.pubkey_entity = pubkey
 
         return pubkey, signed_entity
 

@@ -270,6 +270,9 @@ class Entry(NestedBuffer):
         self.encrypted = False
         self.is_legacy = False
 
+        # Will be set by the CertificateTree created after the blob
+        self.signed_entity: SignedEntity = None
+        self.pubkey_entity: PublicKeyEntity = None
 
         try:
             self._parse()
@@ -396,6 +399,9 @@ class PubkeyEntry(Entry):
                b'\n'.join(chunker(b64encode(self.get_der_encoded()), 64)) + \
                b'\n-----END PUBLIC KEY-----\n'
 
+    def get_signed_bytes(self):
+        return self.get_bytes(0, self.buffer_size - self.signature_len)
+
     def sign(self, private_key, certifying_id=None):
         if certifying_id:
             self.set_bytes(0x14, 0x10, certifying_id)
@@ -447,7 +453,7 @@ class PubkeyEntry(Entry):
             return False
 
         if pubkey:
-            signed_data = self.get_bytes(0, self.buffer_size - self.signature_len)
+            signed_data = self.get_signed_bytes()
 
             signature = self.signature.copy()
             signature.reverse()
@@ -632,7 +638,7 @@ class HeaderEntry(Entry):
     def get_readable_signed_by(self):
         return str(self.signature_fingerprint, encoding='ascii').upper()[:4]
 
-    def get_decompressed(self) -> bytes:
+    def get_signed_bytes(self) -> bytes:
         return self.header.get_bytes() + self.get_decompressed_body()
 
     def get_decompressed_body(self) -> bytes:
@@ -686,7 +692,7 @@ class HeaderEntry(Entry):
             self.signature_fingerprint = hexlify(certifying_id)
 
         if self.compressed:
-            signed_data = self.get_decompressed()[:self.size_signed + self.header_len]
+            signed_data = self.get_signed_bytes()[:self.size_signed + self.header_len]
         elif self.encrypted:
             self.psptool.ph.print_warning(f'Signing encrypted entries is not supported yet')
             return False
@@ -720,6 +726,7 @@ class HeaderEntry(Entry):
         return True
 
     def verify_signature(self, pubkey=None):
+        # todo: remove (deprecated via crypto.py)
         # Note: This does not work if an entry was compressed AND encrypted.
         # However, we have not yet seen such entry.
 
@@ -728,7 +735,7 @@ class HeaderEntry(Entry):
             return False
 
         if self.compressed:
-            signed_data = self.get_decompressed()[:self.size_signed + self.header_len]
+            signed_data = self.get_signed_bytes()[:self.size_signed + self.header_len]
         elif self.encrypted:
             signed_data = self.get_decrypted()[:self.size_signed + self.header_len]
         else:

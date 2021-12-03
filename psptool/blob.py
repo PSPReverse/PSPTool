@@ -90,37 +90,42 @@ class Blob(NestedBuffer):
 
     def _find_inline_pubkey_parents(self):
         inline_keys = [pk
-            for pks in self.pubkeys.values()
-                for pk in pks
-                    if pk.is_inline
-        ]
+                       for pks in self.pubkeys.values()
+                       for pk in pks
+                       if pk.is_inline
+                       ]
 
         for key in inline_keys:
             key.parent_entry = self.range_dict[key.get_address()]
 
     def _construct_range_dict(self):
-        directories = [directory for fet in self.fets for directory in fet.directories]
-        directory_entries = [directory.entries for directory in directories]
-
-        # flatten list of lists
-        all_entries = [entry for sublist in directory_entries for entry in sublist]
+        all_entries = self.all_entries()
 
         # create RangeDict in order to find entries, directories and fets for a given address
+        directories = [directory for fet in self.fets for directory in fet.directories]
         self.range_dict = RangeDict({
-            ** {
-                range(entry.get_address(), entry.get_address() + entry.buffer_size):  # key is start and end address of the entry
+            **{
+                range(entry.get_address(),
+                      entry.get_address() + entry.buffer_size):  # key is start and end address of the entry
                 entry
                 for entry in all_entries if entry.buffer_size != 0xffffffff  # value is its type
-            }, ** {
+            }, **{
                 range(directory.get_address(), directory.get_address() + len(directory)):
-                directory
+                    directory
                 for directory in directories
-            }, ** {
+            }, **{
                 range(fet.get_address(), fet.get_address() + len(fet)):
-                fet
+                    fet
                 for fet in self.fets
             }
         })
+
+    def all_entries(self):
+        directories = [directory for fet in self.fets for directory in fet.directories]
+        directory_entries = [directory.entries for directory in directories]
+        # flatten list of lists
+        all_entries = [entry for sublist in directory_entries for entry in sublist]
+        return all_entries
 
     def all_pubkeys(self):
         return sum(self.pubkeys.values(), start=list())
@@ -152,7 +157,7 @@ class Blob(NestedBuffer):
         m = re.finditer(re.escape(binascii.a2b_hex(fp)), self.raw_blob)
         for index in m:
             start = index.start() - 4
-            if int.from_bytes(self.raw_blob[start:start+4], 'little') == 1:
+            if int.from_bytes(self.raw_blob[start:start + 4], 'little') == 1:
                 # Maybe a pubkey. Determine its size:
                 pub_exp_size = int.from_bytes(self.raw_blob[start + 0x38: start + 0x3c],
                                               'little')
@@ -162,11 +167,11 @@ class Blob(NestedBuffer):
                     size = 0x440
                 else:
                     continue
-                
+
                 key_id = self.raw_blob[start + 0x04: start + 0x14]
                 cert_id = self.raw_blob[start + 0x14: start + 0x24]
 
-                if key_id != cert_id and cert_id != b'\0'*0x10:
+                if key_id != cert_id and cert_id != b'\0' * 0x10:
                     if pub_exp_size == 2048:
                         size += 0x100
                     else:

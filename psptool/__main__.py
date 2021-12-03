@@ -42,6 +42,7 @@ def main():
     parser.add_argument('-k', '--pem-key', help=SUPPRESS, action='store_true')
     parser.add_argument('-n', '--no-duplicates', help=SUPPRESS, action='store_true')
     parser.add_argument('-j', '--json', help=SUPPRESS, action='store_true')
+    parser.add_argument('-p', '--privkeyfile', help=SUPPRESS)
 
     action = parser.add_mutually_exclusive_group(required=False)
 
@@ -75,6 +76,7 @@ def main():
         '-e idx:  specifies entry_index',
         '-s file: specifies subfile (i.e. the new entry contents)',
         '-o file: specifies outfile',
+        '-p file: specifies private key file (PEM) for re-signing'
         '', '']), action='store_true')
 
     args = parser.parse_args()
@@ -89,7 +91,7 @@ def main():
             if args.decompress:
                 if not entry.compressed:
                     ph.print_error_and_exit(f'Entry is not compressed {entry.get_readable_type()}')
-                output = entry.get_decompressed()
+                output = entry.get_signed_bytes()
             elif args.decrypt:
                 if not entry.encrypted:
                     ph.print_error_and_exit(f'Entry is not encrypted {entry.get_readable_type()}')
@@ -110,7 +112,7 @@ def main():
                     for dir_index, directory in enumerate(directories):
                         for entry_index, entry in enumerate(directory.entries):
                             if args.decompress and type(entry) is HeaderEntry:
-                                out_bytes = entry.get_decompressed()
+                                out_bytes = entry.get_signed_bytes()
                             elif args.decrypt and type(entry) is HeaderEntry:
                                 out_bytes = entry.get_decrypted()
                             elif args.pem_key and type(entry) is PubkeyEntry:
@@ -129,7 +131,7 @@ def main():
                 else:  # no_duplicates is True
                     for entry in psp.blob.unique_entries:
                         if args.decompress and type(entry) is HeaderEntry:
-                            out_bytes = entry.get_decompressed()
+                            out_bytes = entry.get_signed_bytes()
                         elif args.decrypt and type(entry) is HeaderEntry:
                             out_bytes = entry.get_decrypted()
                         elif args.pem_key and type(entry) is PubkeyEntry:
@@ -151,7 +153,7 @@ def main():
 
     elif args.replace_entry:
         if args.directory_index is not None and args.entry_index is not None and args.subfile is not None \
-                and args.outfile is not None:
+                and args.outfile is not None and args.privkeyfile is not None:
             with open(args.subfile, 'rb') as f:
                 sub_binary = f.read()
 
