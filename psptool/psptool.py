@@ -38,14 +38,14 @@ class PSPTool:
         self.ph = PrintHelper(verbose)
 
         self.blob = Blob(rom_bytes, len(rom_bytes), self)
-        self.cert_tree = CertificateTree.from_blob(self.blob)
+        self.cert_tree = CertificateTree.from_blob(self.blob, self)
 
         # todo: remove these tests once all kinds of entries pass
         for entry in self.blob.all_entries():
             s = entry.signed_entity
             if s:
                 try:
-                    s.verify_with_tree()
+                    s.is_verified()
                     #self.ph.print_info(f"Successfully verified {entry} {s}")
                 except SignatureInvalid:
                     self.ph.print_warning(f"SignatureInvalid: {entry} {s}")
