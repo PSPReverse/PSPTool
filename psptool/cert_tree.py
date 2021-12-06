@@ -270,7 +270,7 @@ class CertificateTree:
         # add address->pubkeys dict
         self.pubkeys_address[start_address] = pubkey
 
-        # update knowns key ids
+        # update known key ids
         key_id = pubkey.key_id.as_string()
         self.ids.add(key_id)
 
@@ -335,6 +335,17 @@ class CertificateTree:
                     if type(entry) == HeaderEntry:
                         ct.add_header_entry(entry)
 
-        # TODO: inline keys
+        # Add unlisted/inline keys as found by additional blob parsing efforts
+        missing_key_ids = set(
+            blob.pubkeys.keys()
+        ).difference(
+            set(
+                ct.pubkeys.keys()
+            )
+        )
+
+        for key_id in missing_key_ids:
+            for entry in blob.pubkeys[key_id]:
+                ct.add_pubkey_entry(entry)
 
         return ct
