@@ -46,15 +46,21 @@ class PSPTool:
             if s:
                 try:
                     s.verify_with_tree()
-                    self.ph.print_info(f"Successfully verified {entry} {s}")
+                    #self.ph.print_info(f"Successfully verified {entry} {s}")
                 except SignatureInvalid:
                     self.ph.print_warning(f"SignatureInvalid: {entry} {s}")
                     if entry.verify_signature():
                         self.ph.print_warning(f"... but old algo could verify it.")
+                        # These calls help in debugging
+                        entry.verify_signature()
+                        s.verify_with_tree()
                 except NoCertifyingKey:
                     self.ph.print_warning(f"NoCertifyingKey: {entry} {s}")
                     if entry.verify_signature():
                         self.ph.print_warning(f"... but old algo could verify it.")
+                        # These calls help in debugging
+                        entry.verify_signature()
+                        s.verify_with_tree()
 
         self.filename = None
 

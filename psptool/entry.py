@@ -639,7 +639,12 @@ class HeaderEntry(Entry):
         return str(self.signature_fingerprint, encoding='ascii').upper()[:4]
 
     def get_signed_bytes(self) -> bytes:
-        return self.header.get_bytes() + self.get_decompressed_body()
+        if self.compressed:
+            return self.header.get_bytes() + self.get_decompressed_body()
+        elif self.encrypted:
+            return self.get_decrypted()[:self.size_signed + self.header_len]
+        else:
+            return self.get_bytes()[:self.size_signed + self.header_len]
 
     def get_decompressed_body(self) -> bytes:
         if not self.compressed:
@@ -734,12 +739,7 @@ class HeaderEntry(Entry):
         if self.signature is None:
             return False
 
-        if self.compressed:
-            signed_data = self.get_signed_bytes()[:self.size_signed + self.header_len]
-        elif self.encrypted:
-            signed_data = self.get_decrypted()[:self.size_signed + self.header_len]
-        else:
-            signed_data = self.get_bytes()[:self.size_signed + self.header_len]
+        signed_data = self.get_signed_bytes()
 
         if pubkey:
             if len(self.signature) == 0x100:
@@ -777,5 +777,6 @@ class HeaderEntry(Entry):
                     continue
                 crypto_pubkey = load_der_public_key(pubkey_der_encoded, backend=default_backend())
                 if self.verify_signature(crypto_pubkey):
+                    self.psptool.ph.print_info(f"Verified {self} with {pubkey} ({pubkey.key_id=})")
                     return True
         return False
