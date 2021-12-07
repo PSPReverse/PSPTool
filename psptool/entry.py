@@ -24,6 +24,8 @@ from .utils import zlib_decompress, zlib_compress
 from .utils import decrypt
 from .utils import round_to_int
 
+from .types import KeyId, Signature, ReversedSignature
+
 from enum import Enum
 
 from binascii import hexlify
@@ -131,6 +133,8 @@ class Entry(NestedBuffer):
         # todo: consolidate these constants with Directory._ENTRY_TYPES_PUBKEY
         PUBKEY_ENTRY_TYPES = [0x0, 0x9, 0xa, 0x5, 0xd, 0x43, 0x4e, 0xdead]
 
+        KEY_STORE_ENTRY_TYPES = [0x50]
+
         # Types known to have no PSP HDR
         # TODO: Find a better way to identify those entries
         NO_HDR_ENTRY_TYPES = [0x4, 0xb, 0x21, 0x40, 0x70, 0x30062, 0x6, 0x61, 0x60,
@@ -139,7 +143,10 @@ class Entry(NestedBuffer):
                               0x400066, 0x500066, 0x800068, 0x61, 0x200060, 0x300060,
                               0x300068, 0x400068, 0x500068, 0x400060, 0x500060, 0x200068,
                               0x7, 0x38, 0x54]
+
         NO_SIZE_ENTRY_TYPES = [0xb]
+
+        size &= 0x00ffffff
 
         new_entry = None
 
@@ -168,6 +175,14 @@ class Entry(NestedBuffer):
                 new_entry = PubkeyEntry(parent_directory, parent_buffer, type_, size, offset, blob, psptool)
             except:
                 psptool.ph.print_warning(f"Couldn't parse pubkey entry 0x{type_:x}")
+
+        elif type_ in KEY_STORE_ENTRY_TYPES:
+            # Option 2: it's a KeyStoreEntry
+            try:
+                new_entry = KeyStoreEntry(parent_directory, parent_buffer, type_, size, offset, blob, psptool)
+            except:
+                psptool.ph.print_warning(f"Couldn't parse kesstore_entry 0x{type_:x}")
+                raise
 
         if new_entry is None:
             # Option 3: it's a HeaderEntry (most common)
@@ -270,10 +285,6 @@ class Entry(NestedBuffer):
         self.encrypted = False
         self.is_legacy = False
 
-        # Will be set by the CertificateTree created after the blob
-        self.signed_entity: SignedEntity = None
-        self.pubkey_entity: PublicKeyEntity = None
-
         try:
             self._parse()
         except (struct.error, AssertionError):
@@ -336,10 +347,233 @@ class Entry(NestedBuffer):
         for directory in self.references:
             directory.update_entry_fields(self, self.type, self.buffer_size, self.buffer_offset)
 
+class KeyStoreEntry(Entry):
+
+    def _parse(self):
+
+        # Will be set by the CertificateTree created after the blob
+        self.signed_entity = None
+
+        self.header = KeyStoreEntryHeader(self)
+
+        key_store_start = self.header.buffer_size
+        key_store_size = self.header.body_size
+        self.key_store = KeyStore(self, key_store_size, buffer_offset=key_store_start)
+
+        signature_start = key_store_start + key_store_size
+        signature_size = self.header.signature_size
+        assert signature_size in {0x100, 0x200}
+        self.signature = Signature(self, signature_size, signature_start)
+        #self.signature = ReversedSignature(self, signature_size, signature_start)
+
+        assert signature_start + signature_size == self.buffer_size
+
+    def get_signed_bytes(self):
+        return self.header.get_bytes() + self.key_store.get_bytes()
+
+
+class KeyStoreEntryHeader(NestedBuffer):
+
+    HEADER_SIZE = 0x100
+
+    def __init__(self, entry):
+        super().__init__(entry, self.HEADER_SIZE)
+
+        self._magic = NestedBuffer(self, 0x4, buffer_offset=0x10)
+        assert self.magic in {b'$PS1', 4*b'\0'}
+
+        self._body_size = NestedBuffer(self, 0x4, buffer_offset=0x14)
+        self._packed_size = NestedBuffer(self, 0x4, buffer_offset=0x6c)
+        assert self.signature_size in {0x100, 0x200}
+
+        self.certifying_id = KeyId(self, 0x10, buffer_offset=0x38)
+
+        self._unknown_constant_1 = NestedBuffer(self, 0x4, buffer_offset=0x30)
+        self._unknown_constant_2 = NestedBuffer(self, 0x4, buffer_offset=0x34)
+        self._unknown_constant_3 = NestedBuffer(self, 0x4, buffer_offset=0x7c)
+
+        assert self.unknown_constants == (b'\1\0\0\0', b'\2\0\0\0', b'P\0\0\0')
+
+        self._sha256_checksum_flag_1 = NestedBuffer(self, 0x4, buffer_offset=0x4c)
+        self._sha256_checksum_flag_2 = NestedBuffer(self, 0x4, buffer_offset=0x58)
+
+        if self.has_sha256_checksum:
+            self.sha256_checksum = NestedBuffer(self, 0x20, buffer_offset=0xd0)
+        self.sha256_checksum = None
+
+        zero_ranges = {
+            (0x00, 0x10),
+            (0x18, 0x18),
+            (0x48, 0x04),
+            (0x50, 0x08),
+            (0x5c, 0x10),
+            (0x70, 0x0c),
+            (0x80, 0x50),
+            (0xf0, 0x10),
+        }
+        for (start, length) in zero_ranges:
+            assert self.get_bytes(start, length) == b'\0' * length
+
+    @property
+    def magic(self) -> bytes:
+        return self._magic.get_bytes()
+
+    @magic.setter
+    def magic(self, value: bytes):
+        self._magic[:] = value
+
+    @property
+    def body_size(self) -> int:
+        return int.from_bytes(self._body_size.get_bytes(), 'little')
+
+    @property
+    def packed_size(self) -> int:
+        return int.from_bytes(self._packed_size.get_bytes(), 'little')
+
+    @property
+    def signature_size(self) -> int:
+        return self.packed_size - self.HEADER_SIZE - self.body_size
+
+    @property
+    def unknown_constants(self) -> (bytes, bytes, bytes):
+        return (
+                self._unknown_constant_1.get_bytes(),
+                self._unknown_constant_2.get_bytes(),
+                self._unknown_constant_3.get_bytes(),
+                )
+
+    @property
+    def sha256_checksum_flag_1(self) -> int:
+        return int.from_bytes(self._sha256_checksum_flag_1.get_bytes(), 'little')
+
+    @property
+    def sha256_checksum_flag_2(self) -> int:
+        return int.from_bytes(self._sha256_checksum_flag_2.get_bytes(), 'big')
+
+    @property
+    def has_sha256_checksum(self) -> bool:
+        assert self.sha256_checksum_flag_1 == self.sha256_checksum_flag_2
+        assert self.sha256_checksum_flag_1 in {0, 1}
+        return self.sha256_checksum_flag_1 == 1
+
+
+class KeyStore(NestedBuffer):
+
+    HEADER_SIZE = 0x50
+
+    def __init__(self, parent_buffer, buffer_size: int, buffer_offset: int = 0):
+        super().__init__(parent_buffer, buffer_size, buffer_offset)
+
+        # parse header
+        self.header = NestedBuffer(self, self.HEADER_SIZE)
+
+        self._size = NestedBuffer(self.header, 0x4, buffer_offset=0)
+        assert self.size == self.buffer_size
+
+        self._unknown_flag = NestedBuffer(self.header, 0x4, buffer_offset=0x4)
+        assert self.unknown_flag
+
+        self.magic = NestedBuffer(self.header, 0x4, buffer_offset=0x8)
+        assert self.magic.get_bytes() == b'$KDB'
+
+        assert self.header.get_bytes(0xc, 0x44) == b'\0' * 0x44
+
+        # parse body
+        body_start = self.header.buffer_size
+        body_size = self.buffer_size - body_start
+        assert body_size > 0
+        self.body = NestedBuffer(self, body_size, buffer_offset=body_start)
+
+        next_key_start = 0
+        self.keys = []
+        while next_key_start < body_size:
+            key = KeyStoreKey(self.body, next_key_start)
+            self.keys.append(key)
+            next_key_start += key.size
+
+    @property
+    def size(self) -> int:
+        return int.from_bytes(self._size.get_bytes(), 'little')
+
+    @property
+    def unknown_flag(self) -> bool:
+        value = int.from_bytes(self._unknown_flag.get_bytes(), 'little')
+        assert value in {0,1}
+        return value == 1
+
+
+class KeyStoreKey(NestedBuffer):
+
+    HEADER_SIZE = 0x50
+
+    def __init__(self, body: NestedBuffer, offset: int):
+
+        # Will be set by the CertificateTree created after the blob
+        self.pubkey_entity = None
+
+        # init self
+        size = int.from_bytes(body.get_bytes(offset, 0x4), 'little')
+        super().__init__(body, size, buffer_offset=offset)
+
+        # init header
+        self.header = NestedBuffer(body, self.HEADER_SIZE, buffer_offset=offset)
+
+        # init crypto_material (body)
+        body_start = offset + self.HEADER_SIZE
+        body_size = size - self.HEADER_SIZE
+        assert body_size > 0
+        self.crypto_material = NestedBuffer(body, body_size, buffer_offset=body_start)
+
+        # init header fields
+        self._size = NestedBuffer(self.header, 0x4, buffer_offset=0)
+        assert self.size == self.buffer_size
+
+        self._unknown_flag = NestedBuffer(self.header, 0x4, buffer_offset=0x4)
+        assert self.unknown_flag
+
+        self._unknown_id = NestedBuffer(self.header, 0x4, buffer_offset=0x8)
+        assert self.unknown_id < 0x100
+
+        self._rsa_exponent = NestedBuffer(self.header, 0x4, buffer_offset=0xc)
+        assert self.rsa_exponent == 0x10001
+
+        self.key_id = KeyId(self.header, 0x10, buffer_offset=0x10)
+
+        self._key_size = NestedBuffer(self.header, 0x4, buffer_offset=0x20)
+        assert self.key_size == self.crypto_material.buffer_size << 3
+
+        assert self.header.get_bytes(0x24, 0x2c) == b'\0' * 0x2c
+
+    @property
+    def size(self) -> int:
+        return int.from_bytes(self._size.get_bytes(), 'little')
+
+    @property
+    def unknown_flag(self) -> bool:
+        value = int.from_bytes(self._unknown_flag.get_bytes(), 'little')
+        assert value in {0,1}
+        return value == 1
+
+    @property
+    def unknown_id(self) -> int:
+        return int.from_bytes(self._unknown_id.get_bytes(), 'little')
+
+    @property
+    def rsa_exponent(self) -> int:
+        return int.from_bytes(self._rsa_exponent.get_bytes(), 'little')
+
+    @property
+    def key_size(self) -> int:
+        return int.from_bytes(self._key_size.get_bytes(), 'little')
+
 
 class PubkeyEntry(Entry):
     def _parse(self):
         """ SEV spec B.1 """
+
+        # Will be set by the CertificateTree created after the blob
+        self.signed_entity = None
+        self.pubkey_entity = None
 
         pubexp_size = struct.unpack('<I', self[0x38:0x3c])[0] // 8
         modulus_size = struct.unpack('<I', self[0x3c:0x40])[0] // 8
@@ -511,6 +745,9 @@ class HeaderEntry(Entry):
     def _parse(self):
         self.header = NestedBuffer(self, HeaderEntry.HEADER_LEN)
 
+        # Will be set by the CertificateTree created after the blob
+        self.signed_entity = None
+
         # todo: use NestedBuffers instead of saving by value
         self.magic = self.header[0x10:0x14]
         self.size_signed = struct.unpack('<I', self.header[0x14:0x18])[0]
@@ -552,10 +789,21 @@ class HeaderEntry(Entry):
         if self.signature_fingerprint != hexlify(16 * b'\x00'):
             self.pubkeys = self.blob.get_pubkeys(self.signature_fingerprint)
             if not self.pubkeys:
-                self.psptool.ph.print_warning(f"Couldn't find corresponding key in blob for entry at: 0x{self.get_address():x}. Type: "
-                              f"{self.get_readable_type()}")
-                self.signature_len = 0x0
-                self.signed = False
+
+                body_size = self.size_signed
+                if self.compressed:
+                    body_size = self.zlib_size
+                self.signature_len = self.rom_size - 0x100 - body_size
+
+                if self.signature_len % 0x100 > 0x10:
+                    self.psptool.ph.print_warning(f"Signature size of 0x{self.signature_len:x} seems odd!")
+
+                self.signature_len >>= 8
+                self.signature_len <<= 8
+
+                #self.psptool.ph.print_warning(f"Couldn't find corresponding key in blob for entry at: 0x{self.get_address():x}. Type: "
+                              #f"{self.get_readable_type()}")
+
                 return
             self.signature_len = len(self.pubkeys[0].modulus)
         else:
@@ -563,6 +811,7 @@ class HeaderEntry(Entry):
 
     def _parse_legacy_hdr(self):
         self.buffer_size = self.size_signed + self.header_len
+        self.buffer_size &= 0x00ffffff
 
         if self.compressed:
             self.zlib_size = self.size_signed
@@ -573,7 +822,8 @@ class HeaderEntry(Entry):
         else:
             # TODO create nested buffer with uncompressed signature
             # raw_bytes = zlib.decompress(self[0x100:])
-            self.signature = None
+            #self.signature = None
+            self.signature = NestedBuffer(self,self.signature_len, len(self) - self.signature_len)
 
         self.body = NestedBuffer(self, len(self) - self.size_signed - self.header_len, self.header_len)
         self.is_legacy = True
@@ -640,6 +890,7 @@ class HeaderEntry(Entry):
 
     def get_signed_bytes(self) -> bytes:
         if self.compressed:
+            # TODO: there are some exceptions to this behaviour
             return self.header.get_bytes() + self.get_decompressed_body()
         elif self.encrypted:
             return self.get_decrypted()[:self.size_signed + self.header_len]
@@ -777,6 +1028,6 @@ class HeaderEntry(Entry):
                     continue
                 crypto_pubkey = load_der_public_key(pubkey_der_encoded, backend=default_backend())
                 if self.verify_signature(crypto_pubkey):
-                    self.psptool.ph.print_info(f"Verified {self} with {pubkey} ({pubkey.key_id=})")
+                    self.psptool.ph.print_info(f"Verified {self} with {pubkey} (pubkey.key_id={pubkey.key_id})")
                     return True
         return False

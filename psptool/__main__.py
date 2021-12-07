@@ -174,6 +174,7 @@ def main():
             psp.ls_entries(verbose=args.verbose)
         else:
             psp.ls(verbose=args.verbose)
+            psp.cert_tree.print_key_tree()
 
     # Output handling (stdout or outfile)
     if output is not None:

@@ -62,7 +62,7 @@ class NestedBuffer:
 
     def __repr__(self):
         return f'{self.__class__.__name__}(address={hex(self.get_address())}, buffer_size={hex(self.buffer_size)}, ' \
-               f'buffer_offset={hex(self.buffer_offset)}, {self.parent_buffer=})'
+                f'buffer_offset={hex(self.buffer_offset)}, self.parent_buffer={self.parent_buffer.get_address():x})'
 
     def _offset_slice(self, old_slice):
         if old_slice.start is None:

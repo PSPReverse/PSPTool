@@ -20,7 +20,8 @@ import json
 from .entry import HeaderEntry
 from .blob import Blob
 from .utils import PrintHelper
-from .cert_tree import CertificateTree, SignatureInvalid, NoCertifyingKey
+from .cert_tree import CertificateTree
+from .errors import NoCertifyingKey
 
 
 class PSPTool:
@@ -42,25 +43,27 @@ class PSPTool:
 
         # todo: remove these tests once all kinds of entries pass
         for entry in self.blob.all_entries():
-            s = entry.signed_entity
-            if s:
-                try:
-                    s.verify_with_tree()
-                    #self.ph.print_info(f"Successfully verified {entry} {s}")
-                except SignatureInvalid:
-                    self.ph.print_warning(f"SignatureInvalid: {entry} {s}")
-                    if entry.verify_signature():
-                        self.ph.print_warning(f"... but old algo could verify it.")
-                        # These calls help in debugging
-                        entry.verify_signature()
-                        s.verify_with_tree()
-                except NoCertifyingKey:
-                    self.ph.print_warning(f"NoCertifyingKey: {entry} {s}")
-                    if entry.verify_signature():
-                        self.ph.print_warning(f"... but old algo could verify it.")
-                        # These calls help in debugging
-                        entry.verify_signature()
-                        s.verify_with_tree()
+            if type(entry) == HeaderEntry:
+                s = entry.signed_entity
+                if s:
+                    try:
+                        if s.verify_with_tree():
+                            #self.ph.print_info(f"Successfully verified {entry} {s}")
+                            pass
+                        else:
+                            self.ph.print_warning(f"SignatureInvalid: {entry} {s}")
+                            if entry.verify_signature():
+                                self.ph.print_warning(f"... but old algo could verify it.")
+                                # These calls help in debugging
+                                entry.verify_signature()
+                                s.verify_with_tree()
+                    except NoCertifyingKey:
+                        self.ph.print_warning(f"NoCertifyingKey: {entry} {s}")
+                        if entry.verify_signature():
+                            self.ph.print_warning(f"... but old algo could verify it.")
+                            # These calls help in debugging
+                            entry.verify_signature()
+                            s.verify_with_tree()
 
         self.filename = None
 
@@ -129,7 +132,7 @@ class PSPTool:
             if entry.encrypted:
                 info.append('encrypted')
             if entry.is_inline:
-                info.append(f'inline(0x{entry.parent_entry.get_address():x})')
+                info.append(f'inline(parent_entry={entry.parent_entry})')
 
             all_values = [
                 '',
@@ -228,3 +231,4 @@ class PSPTool:
             out.append(all_values)
 
         return out
+

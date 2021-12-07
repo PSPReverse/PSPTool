@@ -1,92 +1,10 @@
-from binascii import hexlify
-from .entry import HeaderEntry, PubkeyEntry
+from .entry import HeaderEntry, PubkeyEntry, KeyStoreEntry, KeyStoreKey
 from .utils import NestedBuffer, RangeDict
-from .crypto import KeyType, PublicKey, PrivateKey
-from . import crypto
-
-# Errors
-
-
-class NoCertifyingKey(Exception):
-    def __init__(self, signed_entity):
-        self.signed_entity = signed_entity
-
-    def __str__(self):
-        key_id = self.signed_entity.certifying_key
-        return f'There is no key with id {key_id.as_string()}, so {self.signed_entity} could not be verified!'
-
-
-class SignatureInvalid(Exception):
-    def __init__(self, signed_entity, pubkey: PublicKey):
-        self.signed_entity = signed_entity
-        self.pubkey = pubkey
-
-    def __str__(self):
-        return f'Signature for {self.signed_entity} is not signed by {self.pubkey}!'
-
-
-class NonUniqueSignedEntity(Exception):
-    def __init__(self, existing, new):
-        self.existing = existing
-        self.new = new
-
-    def __str__(self):
-        start = self.existing.body.get_address()
-        end = start + self.existing.body.buffer_size
-        return f'There was anlready a SignedEntity at {hex(start)}:{hex(end)} (existing={self.existing}, new={self.new})!'
-
-
-class NonUniquePublicKeyEntity(Exception):
-    def __init__(self, existing, new):
-        self.existing = existing
-        self.new = new
-
-    def __str__(self):
-        start = self.existing.key_id.get_address()
-        return f'There was anlready a PublicKeyEntity with key_id at {hex(start)} (existing={self.existing}, new={self.new})!'
+from .crypto import KeyType, PublicKey, PrivateKey, get_key_type
+from .types import Signature, KeyId, ReversedSignature
+from . import errors
 
 # Tree Types
-
-
-class KeyId(NestedBuffer):
-    def as_string(self) -> str:
-        return hexlify(self.get_bytes())
-
-    def __repr__(self):
-        return f'KeyId({self.as_string()})'
-
-
-class Signature(NestedBuffer):
-    @classmethod
-    def from_nested_buffer(cls, nb):
-        return Signature(nb.parent_buffer, nb.buffer_size, buffer_offset=nb.buffer_offset)
-
-
-class ReversedSignature(Signature):
-    def __getitem__(self, item):
-        if isinstance(item, slice):
-            new_slice = self._offset_slice(item)
-            return self.parent_buffer[new_slice]
-        else:
-            assert (isinstance(item, int))
-            assert item >= 0, "Negative index not supported for ReversedSignature"
-            return self.parent_buffer[self.buffer_offset + self.buffer_size - item - 1]
-
-    def __setitem__(self, key, value):
-        if isinstance(key, slice):
-            new_slice = self._offset_slice(key)
-            self.parent_buffer[new_slice] = value
-        else:
-            assert (isinstance(key, int))
-            self.parent_buffer[self.buffer_offset + self.buffer_size - key - 1] = value
-
-    def _offset_slice(self, item):
-        return slice(
-            self.buffer_offset + self.buffer_size - (item.start or 0) - 1,
-            self.buffer_offset + self.buffer_size - (item.stop or self.buffer_size) - 1,
-            -1
-        )
-
 
 class SignedEntity:
     def __init__(self, entry, certifying_id: KeyId, signature: Signature):
@@ -98,21 +16,33 @@ class SignedEntity:
         self.certifying_keys = None
         self.contained_keys = set()
 
+    def get_address(self):
+        return self.entry.get_address()
+
+    def get_length(self):
+        return self.entry.buffer_size
+
+    def get_range(self):
+        start = self.get_address()
+        return range(start, start + self.get_length())
+
+    def __repr__(self) -> str:
+        return f'SignedEntity(@{self.get_address():x}:{self.get_length():x})'
+
     @classmethod
     def _from_pubkey_entry(cls, pke):
         if not pke.signed:
             return None
 
         signature_start = pke.buffer_size - pke.signature_len
-        body = NestedBuffer(pke, signature_start)
-        certifying_id = KeyId(body, 0x10, buffer_offset=0x14)
+        certifying_id = KeyId(pke, 0x10, buffer_offset=0x14)
         signature = ReversedSignature(pke, pke.signature_len, buffer_offset=signature_start)
 
         return SignedEntity(pke, certifying_id, signature)
 
     @classmethod
-    def _from_header_entry(cls, he):
-        if not he.signed or not he.signature:
+    def _from_header_entry(cls, he: HeaderEntry):
+        if not he.signed:
             return None
 
         signature = Signature.from_nested_buffer(he.signature)
@@ -120,26 +50,26 @@ class SignedEntity:
 
         return SignedEntity(he, certifying_id, signature)
 
+    @classmethod
+    def _from_key_store_entry(cls, kse: KeyStoreEntry):
+        return SignedEntity(kse, kse.header.certifying_id, kse.signature)
+
     def is_verified(self):
-        try:
-            self.verify_with_tree()
-        except:
-            return False
-        return True
+        return self.verify_with_tree()
+
+    def is_verified_by(self, pubkey):
+        return self.verify_with_pubkey(pubkey.get_public_key())
 
     def verify_with_tree(self):
         if not self.certifying_keys:  # works for None or set()
-            raise NoCertifyingKey(self)
+            raise errors.NoCertifyingKey(self)
         for key in self.certifying_keys:
-            self.verify_with_pubkey(key.get_public_key())
+            if not self.verify_with_pubkey(key.get_public_key()):
+                return False
+        return True
 
-    def verify_with_pubkey(self, pubkey: PublicKey):
-        try:
-            res = pubkey.verify_blob(self.entry.get_signed_bytes(), self.signature.get_bytes())
-            if res is not None and not res:
-                raise None
-        except:
-            raise SignatureInvalid(self, pubkey)
+    def verify_with_pubkey(self, pubkey: PublicKey) -> bool:
+        return pubkey.verify_blob(self.entry.get_signed_bytes(), self.signature.get_bytes())
 
     # resigns this entry only
     def resign_only(self, privkey: PrivateKey):
@@ -155,22 +85,42 @@ class PublicKeyEntity:
         self._crypto_material = crypto_material
 
         # will be filled by CertificateTree
-        self.wrapping_entity = None
+        self.wrapping_entities = None
         self.certified_entities = None
 
         # for lazy loading
         self._public_key = None
 
+    def get_address(self):
+        return self.key_id.get_address()
+
+    def get_magic(self):
+        return self.key_id.as_string()[:4]
+
+    def __repr__(self) -> str:
+        return f'PubkeyEntity({self.get_magic()}, @{self.get_address():x})'
+
+    def is_same(self, other) -> bool:
+        if self.key_id[:] != other.key_id[:]:
+            return False
+        if self.key_type != other.key_type:
+            return False
+        if self._crypto_material[:] != other._crypto_material[:]:
+            return False
+        # TODO: we don't need this
+        assert self.certified_entities == other.certified_entities
+        return True
+
     @classmethod
-    def _from_pubkey_entry(cls, pke):
+    def _from_pubkey_entry(cls, pke: PubkeyEntry):
         body_len = pke.buffer_size
         if pke.signed:
             body_len -= pke.signature_len
 
         if body_len == 0x240:
-            key_type = crypto.get_key_type('rsa2048')
+            key_type = get_key_type('rsa2048')
         elif body_len == 0x440:
-            key_type = crypto.get_key_type('rsa4096')
+            key_type = get_key_type('rsa4096')
         else:
             raise Exception(f'Unknown PubkeyEntry body length ({hex(body_len)}) for {pke}')
 
@@ -179,24 +129,45 @@ class PublicKeyEntity:
 
         return PublicKeyEntity(key_type, key_id, crypto_material)
 
-    def get_certifying_id(self) -> KeyId:
-        if self.wrapping_entity:
-            return self.wrapping_entity.certifying_id
-        return None
+    @classmethod
+    def _from_key_store_key(cls, ksk: KeyStoreKey):
+
+        if ksk.key_size == 2048:
+            key_type = get_key_type('rsa2048')
+        elif ksk.key_size == 4096:
+            key_type = get_key_type('rsa4096')
+        else:
+            raise Exception(f'Unknown key_size ({ksk.key_size:x}) for {ksk}')
+
+        return PublicKeyEntity(key_type, ksk.key_id, ksk.crypto_material)
+
+    def is_root(self) -> bool:
+        # TODO this is probably wrong
+        assert self not in self.get_certifying_keys()
+        return not self.get_certifying_keys()
+
+    def get_certifying_ids(self):
+        return set(entity.certifying_id
+            for entity in self.wrapping_entities
+        )
 
     def get_certifying_keys(self):
-        if self.wrapping_entity:
-            return self.wrapping_entity.certified_by_keys
-        return set()
+        return set(key
+            for entity in self.wrapping_entities
+                for key in entity.certifying_keys
+        )
 
     def get_certified_keys(self):
-        set(key
+        return set(key
             for entity in self.certified_entities
                 for key in entity.contained_keys
         )
 
     def _make_public_key(self) -> PublicKey:
-        return self.key_type.make_public_key(self._crypto_material.get_bytes())
+        try:
+            return self.key_type.make_public_key(self._crypto_material.get_bytes())
+        except:
+            raise Exception(f'Cannot create crypto key for {self}.')
 
     def get_public_key(self) -> PublicKey:
         if not self._public_key:
@@ -224,14 +195,15 @@ class CertificateTree:
         self.signed_entities = dict()
         # signed entities by body address range
         self.signed_ranges = RangeDict()
+        # signed entities where the verification failed
+        self.verification_failed = set()
 
     def add_signed_entity(self, signed_entity: SignedEntity):
-        start_address = signed_entity.entry.get_address()
-        address_range = range(start_address, start_address + signed_entity.entry.buffer_size)
+        address_range = signed_entity.get_range()
 
         # check if we already have this one
         if self.signed_ranges.get(address_range):
-            raise NonUniqueSignedEntity(self.signed_ranges[address_range], signed_entity)
+            raise errors.NonUniqueSignedEntity(self.signed_ranges[address_range], signed_entity)
 
         # add range->signed_entity dict
         self.signed_ranges[address_range] = signed_entity
@@ -249,8 +221,7 @@ class CertificateTree:
         for (address, pubkey) in self.pubkeys_address.items():
             if address in address_range:
                 signed_entity.contained_keys.add(pubkey)
-                assert pubkey.wrapping_entity is None, f'A pubkey is wrapped in multiple signed entities!'
-                self.wrapping_entity = signed_entity
+                pubkey.wrapping_entities.add(signed_entity)
 
         # update certifying edges
         certifying_keys = self.pubkeys.get(cert_id, set())
@@ -261,11 +232,11 @@ class CertificateTree:
             pubkey.certified_entities.add(signed_entity)
 
     def add_pubkey_entity(self, pubkey: PublicKeyEntity):
-        start_address = pubkey.key_id.get_address()
+        start_address = pubkey.get_address()
 
         # check if we already have this one
         if self.pubkeys_address.get(start_address):
-            raise NonUniquePublicKeyEntity(self.pubkeys_address[start_address], pubkey)
+            raise errors.NonUniquePublicKeyEntity(self.pubkeys_address[start_address], pubkey)
 
         # add address->pubkeys dict
         self.pubkeys_address[start_address] = pubkey
@@ -280,11 +251,12 @@ class CertificateTree:
         self.pubkeys[key_id].add(pubkey)
 
         # update contained/wrapping edges
-        assert pubkey.wrapping_entity is None
-        # None instead of KeyError for RangeDict
-        pubkey.wrapping_entity = self.signed_ranges[start_address]
-        if pubkey.wrapping_entity:
-            pubkey.wrapping_entity.contained_keys.add(pubkey)
+        assert pubkey.wrapping_entities is None
+        pubkey.wrapping_entities = set()
+        for (r, signed_entity) in self.signed_ranges.items():
+            if start_address in r:
+                pubkey.wrapping_entities.add(signed_entity)
+                signed_entity.contained_keys.add(pubkey)
 
         # update certified edges
         assert pubkey.certified_entities is None
@@ -298,7 +270,7 @@ class CertificateTree:
         if signed_entity:
             try:
                 self.add_signed_entity(signed_entity)
-            except NonUniqueSignedEntity as e:
+            except errors.NonUniqueSignedEntity as e:
                 signed_entity = e.existing
             header_entry.signed_entity = signed_entity
             return signed_entity
@@ -309,7 +281,7 @@ class CertificateTree:
         if signed_entity:
             try:
                 self.add_signed_entity(signed_entity)
-            except NonUniqueSignedEntity as e:
+            except errors.NonUniqueSignedEntity as e:
                 signed_entity = e.existing
             pubkey_entry.signed_entity = signed_entity
 
@@ -317,11 +289,28 @@ class CertificateTree:
         if pubkey:
             try:
                 self.add_pubkey_entity(pubkey)
-            except NonUniquePublicKeyEntity as e:
+            except errors.NonUniquePublicKeyEntity as e:
                 pubkey = e.existing
             pubkey_entry.pubkey_entity = pubkey
 
         return pubkey, signed_entity
+
+    def add_key_store_entry(self, key_store_entry: KeyStoreEntry):
+        signed_entity = SignedEntity._from_key_store_entry(key_store_entry)
+        if signed_entity:
+            try:
+                self.add_signed_entity(signed_entity)
+            except errors.NonUniqueSignedEntity as e:
+                signed_entity = e.existing
+            key_store_entry.signed_entity = signed_entity
+
+        for key_store_key in key_store_entry.key_store.keys:
+            pubkey = PublicKeyEntity._from_key_store_key(key_store_key)
+            try:
+                self.add_pubkey_entity(pubkey)
+            except errors.NonUniquePublicKeyEntity as e:
+                pubkey = e.existing
+            key_store_key.pubkey_entity = pubkey
 
     @staticmethod
     def from_blob(blob):
@@ -333,19 +322,69 @@ class CertificateTree:
                     if type(entry) == PubkeyEntry:
                         ct.add_pubkey_entry(entry)
                     if type(entry) == HeaderEntry:
-                        ct.add_header_entry(entry)
+                        res=ct.add_header_entry(entry)
+                    if type(entry) == KeyStoreEntry:
+                        ct.add_key_store_entry(entry)
 
         # Add unlisted/inline keys as found by additional blob parsing efforts
-        missing_key_ids = set(
-            blob.pubkeys.keys()
-        ).difference(
-            set(
-                ct.pubkeys.keys()
-            )
-        )
-
-        for key_id in missing_key_ids:
-            for entry in blob.pubkeys[key_id]:
-                ct.add_pubkey_entry(entry)
+        ids_to_find = ct.ids
+        while ids_to_find:
+            for pubkey in blob.find_inline_pubkey_entries(ids_to_find):
+                ct.add_pubkey_entry(pubkey)
+            ids_to_find = ct.ids.difference(ids_to_find)
 
         return ct
+
+    def unique_pubkeys(self, key_id):
+        unique_keys = list()
+        for key in self.pubkeys[key_id]:
+            inserted = False
+            for uk in unique_keys:
+                if key.is_same(uk[0]):
+                    inserted = True
+                    uk.append(key)
+                    break
+            if not inserted:
+                unique_keys.append([key])
+        return unique_keys
+
+    def _print_key_tree_line(self, keys, indent):
+        keys=list(keys)
+        print(indent + f' +-{keys[0]}')
+        keys=keys[1:]
+        for key in keys:
+            print(indent + f' | {key}')
+
+    def _print_signed_entity_tree_line(self, signed_entity, verified, indent):
+        print(indent + f' +-{signed_entity} (verified={verified})')
+
+    def print_key_tree(self, root=None, indent=''):
+        seen_addresses = set()
+        if not root:
+            print(indent + 'AMD')
+            for key_id in self.pubkeys.keys():
+                for (keys) in self.unique_pubkeys(key_id):
+                    key = keys[0]
+                    if key.is_root():
+                        seen_addresses.update(set(map(lambda k: k.get_address(), keys)))
+                        self._print_key_tree_line(keys, indent)
+                        seen_addresses.update(self.print_key_tree(key, indent+' |'))
+            print("Seen:")
+            print(', '.join(map(hex,seen_addresses)))
+            print("Not seen:")
+            print(', '.join(map(hex,set(self.pubkeys_address) - seen_addresses)))
+            assert seen_addresses == set(self.pubkeys_address.keys())
+        else:
+            for signed_entity in root.certified_entities:
+                verified = signed_entity.is_verified_by(root)
+                if not verified:
+                    self.verification_failed.add(signed_entity)
+                self._print_signed_entity_tree_line(signed_entity, verified, indent)
+                for key in signed_entity.contained_keys:
+                    key_id = key.key_id.as_string()
+                    for keys in self.unique_pubkeys(key_id):
+                        seen_addresses.update(set(map(lambda k: k.get_address(), keys)))
+                        self._print_key_tree_line(keys, indent + ' |')
+                    seen_addresses.update(self.print_key_tree(key, indent+' | |'))
+
+        return seen_addresses

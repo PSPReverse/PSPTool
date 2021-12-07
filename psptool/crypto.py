@@ -4,6 +4,7 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.primitives.serialization import load_pem_private_key
 from cryptography.hazmat.primitives.asymmetric import padding
 from cryptography.hazmat.primitives import hashes
+from cryptography.exceptions import InvalidSignature
 
 # Abstract classes
 
@@ -25,9 +26,8 @@ class PublicKey(ABC):
     def key_type(self) -> KeyType:
         pass
 
-    # Raises an exception if the signature is not valid
     @abstractmethod
-    def verify_blob(self, blob: bytes, signature: bytes):
+    def verify_blob(self, blob: bytes, signature: bytes) -> bool:
         pass
 
     @abstractmethod
@@ -139,13 +139,16 @@ class RsaPublicKey(PublicKey):
     @classmethod
     def from_crypto_material(cls, key_type: RsaKeyType, crypto_material: bytes) -> PublicKey:
         key_size_bytes = key_type.key_size >> 3
-        assert len(
-            crypto_material) == 2 * key_size_bytes, f'Crypto material has wrong size: {len(crypto_material)} != ' \
-                                                    f'{2 * key_size_bytes}!'
 
-        pubexp = int.from_bytes(crypto_material[:key_size_bytes], 'little')
-        modulus = int.from_bytes(crypto_material[key_size_bytes:], 'little')
-        assert pubexp == 65537, f'The public exponent should always be 65537 (0x10001) not {pubexp} ({hex(pubexp)})!'
+        if len(crypto_material) == 2 * key_size_bytes:
+            pubexp = int.from_bytes(crypto_material[:key_size_bytes], 'little')
+            assert pubexp == 65537, f'The public exponent should always be 65537 (0x10001) not {pubexp} ({hex(pubexp)})!'
+            modulus = int.from_bytes(crypto_material[key_size_bytes:], 'little')
+        elif len(crypto_material) == key_size_bytes:
+            pubexp = 0x10001
+            modulus = int.from_bytes(crypto_material, 'little')
+        else:
+            raise Exception(f'Crypto material has unknown size: {len(crypto_material)}!')
 
         return RsaPublicKey(key_type, rsa.RSAPublicNumbers(pubexp, modulus).public_key())
 
@@ -154,12 +157,16 @@ class RsaPublicKey(PublicKey):
 
     # Raises an exception if the signature is not valid
     def verify_blob(self, blob: bytes, signature: bytes):
-        self.public_key.verify(
-            signature,
-            blob,
-            self._key_type.padding(),
-            self._key_type.hash_algorithm
-        )
+        try:
+            self.public_key.verify(
+                signature,
+                blob,
+                self._key_type.padding(),
+                self._key_type.hash_algorithm
+            )
+        except InvalidSignature:
+            return False
+        return True
 
     def get_crypto_material(self):
         key_size_bytes = self._key_type.key_size >> 3

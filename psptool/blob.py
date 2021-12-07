@@ -132,14 +132,16 @@ class Blob(NestedBuffer):
 
     def get_pubkeys(self, key_id):
         if not self.pubkeys.get(key_id):
-            self.pubkeys[key_id] = list(self._find_pubkeys(key_id))
+            #self.pubkeys[key_id] = list(self._find_pubkeys(key_id))
+            self.pubkeys[key_id] = set()
 
         return self.pubkeys[key_id]
 
     def add_pubkey(self, pubkey_entry):
         # search for related inline keys in the entire blob if that hasn't been done yet
         if not self.pubkeys.get(pubkey_entry.key_id):
-            self.pubkeys[pubkey_entry.key_id] = self._find_pubkeys(pubkey_entry.key_id)
+            #self.pubkeys[pubkey_entry.key_id] = self._find_pubkeys(pubkey_entry.key_id)
+            self.pubkeys[pubkey_entry.key_id] = set()
 
         keys = self.pubkeys[pubkey_entry.key_id]
         # if this entry has been found as an "inline" pubkey, remove it
@@ -188,13 +190,27 @@ class Blob(NestedBuffer):
                     #                           self.psptool)
                     assert isinstance(entry, PubkeyEntry)
                     entry.is_inline = True
+                    entry.parent_entry = self.range_dict[entry.get_address()]
+                    if type(entry.parent_entry) == PubkeyEntry:
+                        break
                     found_pubkeys.append(entry)
-                except Entry.ParseError:
+                except Entry.ParseError as e:
                     self.psptool.ph.print_warning(f"_find_pubkey: Entry parse error at 0x{start:x}")
-                except:
+                    self.psptool.ph.print_warning(f'{e}')
+                except Exception as e:
                     self.psptool.ph.print_warning(f"_find_pubkey: Error couldn't convert key at: 0x{start:x}")
+                    self.psptool.ph.print_warning(f'{e}')
 
         return found_pubkeys
+
+    def find_inline_pubkey_entries(self, ids):
+        found_pkes = []
+        for key_id in ids:
+            found_pkes += self._find_pubkeys(key_id)
+        # TODO: deprecate
+        for pke in found_pkes:
+            self.add_pubkey(pke)
+        return found_pkes
 
     def get_entries_by_type(self) -> List[Entry]:
         entries = []
