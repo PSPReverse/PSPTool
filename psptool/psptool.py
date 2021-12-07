@@ -39,31 +39,30 @@ class PSPTool:
         self.ph = PrintHelper(verbose)
 
         self.blob = Blob(rom_bytes, len(rom_bytes), self)
-        self.cert_tree = CertificateTree.from_blob(self.blob)
+        self.cert_tree = CertificateTree.from_blob(self.blob, self)
 
         # todo: remove these tests once all kinds of entries pass
         for entry in self.blob.all_entries():
-            if type(entry) == HeaderEntry:
+            if type(entry) == HeaderEntry and entry.signed:
                 s = entry.signed_entity
-                if s:
-                    try:
-                        if s.verify_with_tree():
-                            #self.ph.print_info(f"Successfully verified {entry} {s}")
-                            pass
-                        else:
-                            self.ph.print_warning(f"SignatureInvalid: {entry} {s}")
-                            if entry.verify_signature():
-                                self.ph.print_warning(f"... but old algo could verify it.")
-                                # These calls help in debugging
-                                entry.verify_signature()
-                                s.verify_with_tree()
-                    except NoCertifyingKey:
-                        self.ph.print_warning(f"NoCertifyingKey: {entry} {s}")
+                try:
+                    if s.verify_with_tree():
+                        #self.ph.print_info(f"Successfully verified {entry} {s}")
+                        pass
+                    else:
+                        self.ph.print_warning(f"SignatureInvalid: {entry} {s}")
                         if entry.verify_signature():
                             self.ph.print_warning(f"... but old algo could verify it.")
                             # These calls help in debugging
                             entry.verify_signature()
                             s.verify_with_tree()
+                except NoCertifyingKey:
+                    self.ph.print_warning(f"NoCertifyingKey: {entry} {s}")
+                    if entry.verify_signature():
+                        self.ph.print_warning(f"... but old algo could verify it.")
+                        # These calls help in debugging
+                        entry.verify_signature()
+                        s.verify_with_tree()
 
         self.filename = None
 
