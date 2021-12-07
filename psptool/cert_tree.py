@@ -33,19 +33,14 @@ class SignedEntity:
     def __repr__(self) -> str:
         return f'SignedEntity(@{self.get_address():x}:{self.get_length():x})'
 
-    @classmethod
-    def _from_pubkey_entry(cls, pke, psptool):
-        if not pke.signed:
-            return None
+    @staticmethod
+    def _from_pubkey_entry(pke, psptool):
+        if pke.signed:
+            return SignedEntity(pke, pke.certifying_id, pke.signature, psptool)
+        return None
 
-        signature_start = pke.buffer_size - pke.signature_len
-        certifying_id = KeyId(pke, 0x10, buffer_offset=0x14)
-        signature = ReversedSignature(pke, pke.signature_len, buffer_offset=signature_start)
-
-        return SignedEntity(pke, certifying_id, signature, psptool)
-
-    @classmethod
-    def _from_header_entry(cls, he: HeaderEntry, psptool):
+    @staticmethod
+    def _from_header_entry(he: HeaderEntry, psptool):
         if not he.signed:
             return None
 
@@ -128,21 +123,14 @@ class PublicKeyEntity:
 
     @classmethod
     def _from_pubkey_entry(cls, pke: PubkeyEntry, psptool):
-        body_len = pke.buffer_size
-        if pke.signed:
-            body_len -= pke.signature_len
-
-        if body_len == 0x240:
+        if pke.modulus_size == 0x100:
             key_type = get_key_type('rsa2048')
-        elif body_len == 0x440:
+        elif pke.modulus_size == 0x200:
             key_type = get_key_type('rsa4096')
         else:
-            raise Exception(f'Unknown PubkeyEntry body length ({hex(body_len)}) for {pke}')
+            raise Exception(f'Unknown PubkeyEntry modulus size ({hex(pke.modulus_size)}) for {pke}')
 
-        key_id = KeyId(pke, 0x10, buffer_offset=0x4)
-        crypto_material = NestedBuffer(pke, body_len - 0x40, buffer_offset=0x40)
-
-        return PublicKeyEntity(key_type, key_id, crypto_material, psptool)
+        return PublicKeyEntity(key_type, pke.key_id, pke.crypto_material, psptool)
 
     @classmethod
     def _from_key_store_key(cls, ksk: KeyStoreKey, psptool):
@@ -157,9 +145,7 @@ class PublicKeyEntity:
         return PublicKeyEntity(key_type, ksk.key_id, ksk.crypto_material, psptool)
 
     def is_root(self) -> bool:
-        # TODO this is probably wrong
-        assert self not in self.get_certifying_keys()
-        return not self.get_certifying_keys()
+        return not self.get_certifying_keys() or self in self.get_certifying_keys()
 
     def get_certifying_ids(self):
         return set(entity.certifying_id
@@ -374,21 +360,21 @@ class CertificateTree:
     def _print_signed_entity_tree_line(self, signed_entity, verified, indent):
         print(indent + f' +-{signed_entity} (verified={verified})')
 
-    def print_key_tree(self, root=None, indent=''):
+    def print_key_tree(self, root=None, indent='', stack=list()):
         seen_addresses = set()
         if not root:
             print(indent + 'AMD')
             for key_id in self.pubkeys.keys():
                 for (keys) in self.unique_pubkeys(key_id):
                     key = keys[0]
-                    if key.is_root():
+                    if key.is_root() and key not in stack:
                         seen_addresses.update(set(map(lambda k: k.get_address(), keys)))
                         self._print_key_tree_line(keys, indent)
-                        seen_addresses.update(self.print_key_tree(key, indent+' |'))
-            print("Seen:")
-            print(', '.join(map(hex,seen_addresses)))
-            print("Not seen:")
-            print(', '.join(map(hex,set(self.pubkeys_address) - seen_addresses)))
+                        seen_addresses.update(self.print_key_tree(key, indent+' |', stack+[key]))
+            #print("Seen:")
+            #print(', '.join(map(hex,seen_addresses)))
+            #print("Not seen:")
+            #print(', '.join(map(hex,set(self.pubkeys_address) - seen_addresses)))
             assert seen_addresses == set(self.pubkeys_address.keys())
         else:
             for signed_entity in root.certified_entities:
@@ -397,10 +383,12 @@ class CertificateTree:
                     self.verification_failed.add(signed_entity)
                 self._print_signed_entity_tree_line(signed_entity, verified, indent)
                 for key in signed_entity.contained_keys:
+                    if key in stack:
+                        continue
                     key_id = key.key_id.as_string()
                     for keys in self.unique_pubkeys(key_id):
                         seen_addresses.update(set(map(lambda k: k.get_address(), keys)))
                         self._print_key_tree_line(keys, indent + ' |')
-                    seen_addresses.update(self.print_key_tree(key, indent+' | |'))
+                    seen_addresses.update(self.print_key_tree(key, indent+' | |', stack+[key]))
 
         return seen_addresses

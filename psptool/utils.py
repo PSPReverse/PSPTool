@@ -39,7 +39,7 @@ class NestedBuffer:
         self.parent_buffer = parent_buffer
         self.buffer_size = buffer_size
         self.buffer_offset = buffer_offset
-        assert (self.buffer_size <= self.buffer_offset + self.buffer_size)
+        assert (self.buffer_size <= self.buffer_offset + self.buffer_size), f'sz=0x{self.buffer_size:x},off=0x{self.buffer_offset:x}'
 
     def __len__(self):
         return self.buffer_size

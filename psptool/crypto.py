@@ -11,6 +11,11 @@ from cryptography.exceptions import InvalidSignature
 
 class KeyType(ABC):
 
+    @property
+    @abstractmethod
+    def signature_size(self) -> int:
+        pass
+
     @abstractmethod
     def load_private_key(self, filename: str, password: str = None):
         pass
@@ -22,6 +27,7 @@ class KeyType(ABC):
 
 class PublicKey(ABC):
 
+    @property
     @abstractmethod
     def key_type(self) -> KeyType:
         pass
@@ -37,6 +43,7 @@ class PublicKey(ABC):
 
 class PrivateKey(ABC):
 
+    @property
     @abstractmethod
     def key_type(self) -> KeyType:
         pass
@@ -83,6 +90,9 @@ class RsaKeyType(KeyType):
             self.salt_length = 48
         else:
             raise Exception(f'Unknown rsa key length: {key_size}!')
+
+    def signature_size(self) -> int:
+        return self.key_size >> 3
 
     def padding(self):
         return padding.PSS(

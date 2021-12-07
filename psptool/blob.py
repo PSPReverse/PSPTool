@@ -46,7 +46,6 @@ class Blob(NestedBuffer):
 
         self._find_entry_table()
         self._construct_range_dict()
-        self._find_inline_pubkey_parents()
 
     def __repr__(self):
         return f'Blob(agesa_version={self.agesa_version})'
@@ -88,16 +87,6 @@ class Blob(NestedBuffer):
             else:
                 self.psptool.ph.print_warning(f"Found two AGESA versions strings, but only one firmware entry table")
 
-    def _find_inline_pubkey_parents(self):
-        inline_keys = [pk
-                       for pks in self.pubkeys.values()
-                       for pk in pks
-                       if pk.is_inline
-                       ]
-
-        for key in inline_keys:
-            key.parent_entry = self.range_dict[key.get_address()]
-
     def _construct_range_dict(self):
         all_entries = self.all_entries()
 
@@ -127,30 +116,7 @@ class Blob(NestedBuffer):
         all_entries = [entry for sublist in directory_entries for entry in sublist]
         return all_entries
 
-    def all_pubkeys(self):
-        return sum(self.pubkeys.values(), start=list())
-
-    def get_pubkeys(self, key_id):
-        if not self.pubkeys.get(key_id):
-            #self.pubkeys[key_id] = list(self._find_pubkeys(key_id))
-            self.pubkeys[key_id] = set()
-
-        return self.pubkeys[key_id]
-
-    def add_pubkey(self, pubkey_entry):
-        # search for related inline keys in the entire blob if that hasn't been done yet
-        if not self.pubkeys.get(pubkey_entry.key_id):
-            #self.pubkeys[pubkey_entry.key_id] = self._find_pubkeys(pubkey_entry.key_id)
-            self.pubkeys[pubkey_entry.key_id] = set()
-
-        keys = self.pubkeys[pubkey_entry.key_id]
-        # if this entry has been found as an "inline" pubkey, remove it
-        keys = list(filter(lambda k: k.type != 0xdead and k.get_address() != pubkey_entry.get_address(), keys))
-        keys.append(pubkey_entry)
-
-        self.pubkeys[pubkey_entry.key_id] = keys
-
-    def _find_pubkeys(self, fp):
+    def _find_inline_pubkeys(self, fp):
         """ Try to find a pubkey anywhere in the blob.
         The pubkey is identified by its fingerprint. If found, the pubkey is
         added to the list of pubkeys of the blob """
@@ -193,6 +159,7 @@ class Blob(NestedBuffer):
                     entry.parent_entry = self.range_dict[entry.get_address()]
                     if type(entry.parent_entry) == PubkeyEntry:
                         break
+                    entry.parent_entry.inline_keys.add(entry)
                     found_pubkeys.append(entry)
                 except Entry.ParseError as e:
                     self.psptool.ph.print_warning(f"_find_pubkey: Entry parse error at 0x{start:x}")
@@ -206,19 +173,16 @@ class Blob(NestedBuffer):
     def find_inline_pubkey_entries(self, ids):
         found_pkes = []
         for key_id in ids:
-            found_pkes += self._find_pubkeys(key_id)
-        # TODO: deprecate
-        for pke in found_pkes:
-            self.add_pubkey(pke)
+            found_pkes += self._find_inline_pubkeys(key_id)
         return found_pkes
 
-    def get_entries_by_type(self) -> List[Entry]:
+    def get_entries_by_type(self, type_) -> List[Entry]:
         entries = []
 
         for fet in self.fets:
             for _dir in fet.directories:
                 for entry in _dir:
-                    if entry.type == type:
+                    if entry.type == type_:
                         entries.append(entry)
 
         return entries

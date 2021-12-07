@@ -3,11 +3,16 @@ from .utils import NestedBuffer
 
 
 class KeyId(NestedBuffer):
-        def as_string(self) -> str:
-                    return hexlify(self.get_bytes())
 
-                    def __repr__(self):
-                                return f'KeyId({self.as_string()})'
+    @property
+    def magic(self) -> str:
+        return hexlify(self.get_bytes(0,2)).upper().decode('ascii')
+
+    def as_string(self) -> str:
+        return hexlify(self.get_bytes()).upper().decode('ascii')
+
+    def __repr__(self):
+        return f'KeyId({self.as_string()})'
 
 
 class Signature(NestedBuffer):

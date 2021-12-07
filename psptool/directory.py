@@ -72,8 +72,7 @@ class Directory(NestedBuffer):
 
         self._entry_size = self._ENTRY_SIZES[self.magic]
 
-        # First parse all the pubkeys. We need those to calculate the size of a signature
-        self._parse_pubkeys()
+        #self._parse_pubkeys()
         self._parse_entries()
 
         # check entries for a link to a secondary directory (i.e. a continuation of this directory)
@@ -121,30 +120,30 @@ class Directory(NestedBuffer):
         self.buffer_size = len(self.header) + len(self.body)
         self.checksum = NestedBuffer(self, 4, 4)
 
-    def _parse_pubkeys(self):
-        for entry_bytes in self.body.get_chunks(self._entry_size):
-            entry_fields = {}
-            for key, word in zip(self.ENTRY_FIELDS, chunker(entry_bytes, 4)):
-                entry_fields[key] = struct.unpack('<I', word)[0]
+    #def _parse_pubkeys(self):
+    #    for entry_bytes in self.body.get_chunks(self._entry_size):
+    #        entry_fields = {}
+    #        for key, word in zip(self.ENTRY_FIELDS, chunker(entry_bytes, 4)):
+    #            entry_fields[key] = struct.unpack('<I', word)[0]
 
-            # ROMs will be mapped into memory to fit the very end of the 32 bit memory
-            #  -> most ROMs are 16 MB in size, so addresses are starting at 0xFF000000
-            entry_fields['offset'] &= 0x00FFFFFF
-            #  -> some ROMs are 8 MB in size, so addresses are starting at 0xFF800000
-            # if len(self.blob) == 0x800000:
-            #     entry_fields['offset'] &= 0x7FFFFF
+    #        # ROMs will be mapped into memory to fit the very end of the 32 bit memory
+    #        #  -> most ROMs are 16 MB in size, so addresses are starting at 0xFF000000
+    #        entry_fields['offset'] &= 0x00FFFFFF
+    #        #  -> some ROMs are 8 MB in size, so addresses are starting at 0xFF800000
+    #        # if len(self.blob) == 0x800000:
+    #        #     entry_fields['offset'] &= 0x7FFFFF
 
-            if entry_fields['type'] in self._ENTRY_TYPES_PUBKEY:
-                entry = Entry.from_fields(self, self.parent_buffer,
-                                          entry_fields['type'],
-                                          entry_fields['size'],
-                                          entry_fields['offset'],
-                                          self.blob,
-                                          self.psptool)
-                if isinstance(entry, PubkeyEntry):
-                    self.blob.add_pubkey(entry)
-                else:
-                    self.psptool.ph.print_warning(f"Entry type indicates pubkey but could not create PubkeyEntry")
+    #        if entry_fields['type'] in self._ENTRY_TYPES_PUBKEY:
+    #            entry = Entry.from_fields(self, self.parent_buffer,
+    #                                      entry_fields['type'],
+    #                                      entry_fields['size'],
+    #                                      entry_fields['offset'],
+    #                                      self.blob,
+    #                                      self.psptool)
+    #            if isinstance(entry, PubkeyEntry):
+    #                self.blob.add_pubkey(entry)
+    #            else:
+    #                self.psptool.ph.print_warning(f"Entry type indicates pubkey but could not create PubkeyEntry")
 
     def _parse_entries(self):
         for entry_bytes in self.body.get_chunks(self._entry_size):

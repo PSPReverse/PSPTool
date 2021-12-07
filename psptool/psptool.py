@@ -21,7 +21,7 @@ from .entry import HeaderEntry
 from .blob import Blob
 from .utils import PrintHelper
 from .cert_tree import CertificateTree
-from .errors import NoCertifyingKey
+from . import errors
 
 
 class PSPTool:
@@ -40,29 +40,6 @@ class PSPTool:
 
         self.blob = Blob(rom_bytes, len(rom_bytes), self)
         self.cert_tree = CertificateTree.from_blob(self.blob, self)
-
-        # todo: remove these tests once all kinds of entries pass
-        for entry in self.blob.all_entries():
-            if type(entry) == HeaderEntry and entry.signed:
-                s = entry.signed_entity
-                try:
-                    if s.verify_with_tree():
-                        #self.ph.print_info(f"Successfully verified {entry} {s}")
-                        pass
-                    else:
-                        self.ph.print_warning(f"SignatureInvalid: {entry} {s}")
-                        if entry.verify_signature():
-                            self.ph.print_warning(f"... but old algo could verify it.")
-                            # These calls help in debugging
-                            entry.verify_signature()
-                            s.verify_with_tree()
-                except NoCertifyingKey:
-                    self.ph.print_warning(f"NoCertifyingKey: {entry} {s}")
-                    if entry.verify_signature():
-                        self.ph.print_warning(f"... but old algo could verify it.")
-                        # These calls help in debugging
-                        entry.verify_signature()
-                        s.verify_with_tree()
 
         self.filename = None
 
@@ -93,15 +70,15 @@ class PSPTool:
                 self.ls_dir(fet, index, verbose=verbose)
                 print('\n')
 
-        self.ls_keys(verbose=verbose)
+    #    self.ls_keys(verbose=verbose)
 
-    def ls_keys(self, verbose=False):
-        print("Keys:")
-        pubkeys = list()
-        for pks in self.blob.pubkeys.values():
-            pubkeys += pks
-        self.ls_entries(pubkeys, verbose=verbose)
-        print('\n')
+    #def ls_keys(self, verbose=False):
+    #    print("Keys:")
+    #    pubkeys = list(pe
+    #    for pks in self.blob.pubkeys.values():
+    #        pubkeys += pks
+    #    self.ls_entries(pubkeys, verbose=verbose)
+    #    print('\n')
 
     def ls_dir(self, fet,  directory_index, verbose=False):
         directory = fet.directories[directory_index]
@@ -124,14 +101,20 @@ class PSPTool:
                 info.append('compressed')
             if entry.signed:
                 info.append(f'signed({entry.get_readable_signed_by()})')
-                if entry.verify_signature():
-                    info.append('verified')
+                try:
+                    if entry.signed_entity.is_verified():
+                        info.append('verified')
+                except errors.NoCertifyingKey:
+                    info.append('no_key')
             if entry.is_legacy:
                 info.append('legacy header')
             if entry.encrypted:
                 info.append('encrypted')
-            if entry.is_inline:
-                info.append(f'inline(parent_entry={entry.parent_entry})')
+            if type(entry) == HeaderEntry and entry.inline_keys:
+                inline_keys = ', '.join(map(lambda k: k.get_readable_magic(),entry.inline_keys))
+                info.append(f'inline_keys({inline_keys})')
+            #if entry.is_inline:
+                #info.append(f'inline(parent_entry={entry.parent_entry})')
 
             all_values = [
                 '',
@@ -197,9 +180,12 @@ class PSPTool:
             if entry.compressed:
                 info.append('compressed')
             if entry.signed:
-                info.append('signed(%s)' % entry.get_readable_signed_by())
-                if entry.verify_signature():
-                    info.append('verified')
+                info.append(f'signed({entry.get_readable_signed_by()})')
+                try:
+                    if entry.signed_entity.is_verified():
+                        info.append('verified')
+                except errors.NoCertifyingKey:
+                    info.append('no_key')
             if entry.is_legacy:
                 info.append('legacy header')
             if entry.encrypted:

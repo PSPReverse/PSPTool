@@ -26,19 +26,14 @@ from .utils import round_to_int
 
 from .types import KeyId, Signature, ReversedSignature
 
+from .crypto import PrivateKey
+
 from enum import Enum
 
 from binascii import hexlify
 from base64 import b64encode
 from math import ceil
 from hashlib import md5
-
-from cryptography.hazmat.primitives.serialization import load_der_public_key
-from cryptography.hazmat.primitives.serialization import load_pem_private_key
-from cryptography.hazmat.backends import default_backend
-from cryptography.hazmat.primitives.asymmetric import padding
-from cryptography.hazmat.primitives import hashes
-from cryptography.exceptions import InvalidSignature
 
 BIOS_ENTRY_TYPES = [0x10062, 0x30062]
 
@@ -91,6 +86,8 @@ class Entry(NestedBuffer):
         0x42: 'FW_GEC',
         # 0x43: 'FW_XHCI',
         0x44: 'FW_INVALID',
+        0x46: 'ANOTHER_FET',
+        0x50: 'KEY_DATABASE',
         0x5f: 'FW_PSP_SMUSCS',
         0x60: 'FW_IMC',
         0x61: 'FW_GEC',
@@ -142,7 +139,7 @@ class Entry(NestedBuffer):
                               0x67, 0x66, 0x100066, 0x200066, 0x300066, 0x10062,
                               0x400066, 0x500066, 0x800068, 0x61, 0x200060, 0x300060,
                               0x300068, 0x400068, 0x500068, 0x400060, 0x500060, 0x200068,
-                              0x7, 0x38, 0x54]
+                              0x7, 0x38, 0x46, 0x54, 0x600060, 0x700060, 0x600068, 0x700068]
 
         NO_SIZE_ENTRY_TYPES = [0xb]
 
@@ -171,18 +168,11 @@ class Entry(NestedBuffer):
 
         elif type_ in PUBKEY_ENTRY_TYPES:
             # Option 2: it's a PubkeyEntry
-            try:
-                new_entry = PubkeyEntry(parent_directory, parent_buffer, type_, size, offset, blob, psptool)
-            except:
-                psptool.ph.print_warning(f"Couldn't parse pubkey entry 0x{type_:x}")
+            new_entry = PubkeyEntry(parent_directory, parent_buffer, type_, size, offset, blob, psptool)
 
         elif type_ in KEY_STORE_ENTRY_TYPES:
             # Option 2: it's a KeyStoreEntry
-            try:
-                new_entry = KeyStoreEntry(parent_directory, parent_buffer, type_, size, offset, blob, psptool)
-            except:
-                psptool.ph.print_warning(f"Couldn't parse kesstore_entry 0x{type_:x}")
-                raise
+            new_entry = KeyStoreEntry(parent_directory, parent_buffer, type_, size, offset, blob, psptool)
 
         if new_entry is None:
             # Option 3: it's a HeaderEntry (most common)
@@ -196,7 +186,7 @@ class Entry(NestedBuffer):
         return new_entry
 
     @classmethod
-    def from_blob(cls, binary, id_, type_, compressed, signed, psptool, private_key=None):
+    def from_blob(cls, binary, id_, type_, compressed, signed, psptool, private_key: PrivateKey=None):
         if type_ == Entry.Type.PUBKEY:
             psptool.ph.print_warning(f"from_blob is not implemented for pubkeys")
             pass
@@ -215,13 +205,8 @@ class Entry(NestedBuffer):
                 padded_size = round_to_int(len(rom_data), 0x10)
 
             if signed:
-                if private_key is not None:
-                    private_key = load_pem_private_key(private_key, password=None, backend=default_backend())
-                    sig_len = private_key.key_size // 8
-                else:
-                    # We reserve 0x200 for the signature, just in case we use a 4096 bit key.
-                    sig_len = 0x200
-                total_size = padded_size + sig_len
+                assert private_key is not None
+                total_size = padded_size + private_key.key_type.signature_size
             else:
                 total_size = padded_size
 
@@ -255,11 +240,8 @@ class Entry(NestedBuffer):
 
             entry = HeaderEntry(None, blob, id_, total_size, 0x0, blob, psptool)
 
-            if signed and private_key is not None:
-                entry.sign(private_key)
-                entry[-0x200:] = entry.signature
-            # if signed:
-            #     sig = private_key.sign(
+            if signed:
+                entry.signature[:] = private_key.sign(entry.get_signed_bytes())
 
             return entry
         else:
@@ -273,15 +255,13 @@ class Entry(NestedBuffer):
         self.blob = blob
         self.psptool = psptool
         self.type = type_
-        self.is_inline = False
-        self.parent_entry = None  # will be set in Blob._find_inline_pubkey_parents if is_inline
         self.destination = destination
         # todo: deduplicate Entry objects pointing to the same address (in `from_fields`?)
         self.references = [parent_directory] if parent_directory is not None else []
         self.parent_directory = parent_directory
 
         self.compressed = False
-        self.signed = False
+        #self.signed = False
         self.encrypted = False
         self.is_legacy = False
 
@@ -291,6 +271,10 @@ class Entry(NestedBuffer):
             self.psptool.ph.print_warning(f"Couldn't parse entry at: 0x{self.get_address():x}. "
                                           f"Type: {self.get_readable_type()}. Size 0x{len(self):x}")
             raise Entry.ParseError()
+
+    @property
+    def signed(self) -> bool:
+        return False
 
     def __repr__(self):
         return f'{self.__class__.__name__}(type={hex(self.type)}, address={hex(self.get_address())}, ' \
@@ -370,6 +354,20 @@ class KeyStoreEntry(Entry):
 
     def get_signed_bytes(self):
         return self.header.get_bytes() + self.key_store.get_bytes()
+
+    def get_readable_version(self):
+        return '1'
+
+    def get_readable_magic(self):
+        return f'{self.header.magic}'[2:-1]
+
+    def get_readable_signed_by(self):
+        return self.header.certifying_id.magic
+
+    @property
+    def signed(self):
+        return True
+
 
 
 class KeyStoreEntryHeader(NestedBuffer):
@@ -568,6 +566,9 @@ class KeyStoreKey(NestedBuffer):
 
 
 class PubkeyEntry(Entry):
+
+    HEADER_LEN = 0x40
+
     def _parse(self):
         """ SEV spec B.1 """
 
@@ -575,171 +576,95 @@ class PubkeyEntry(Entry):
         self.signed_entity = None
         self.pubkey_entity = None
 
-        pubexp_size = struct.unpack('<I', self[0x38:0x3c])[0] // 8
-        modulus_size = struct.unpack('<I', self[0x3c:0x40])[0] // 8
-        signature_size = len(self) - 0x40 - pubexp_size - modulus_size
-        
-        pubexp_start = 0x40
-        modulus_start = pubexp_start + pubexp_size
-        signature_start = modulus_start + modulus_size
+        # Will be set by blob.find_inline_pubkeys
+        self.is_inline = False
+        self.parent_entry = None
 
-        # Byte order of the numbers is inverted over their entire length
-        # Assumption: Only the most significant 4 bytes of pubexp are relevant and can be converted to int
+        # misc info
+        self._version = NestedBuffer(self, 4)
+        assert self.version == 1
+        self._key_usage = NestedBuffer(self, 4, 0x24)
 
-        # todo: use NestedBuffers instead of saving by value
-        self.pubexp = self[pubexp_start:modulus_start][::-1][-4:]
-        self.modulus = self[modulus_start:modulus_start + modulus_size][::-1]
+        # key ids
+        self.key_id = KeyId(self, 0x10, 0x4)
+        self.certifying_id = KeyId(self, 0x10, 0x14)
 
-        self.version = struct.unpack('<I', self[0x0:0x4])[0]
-        self.key_id = hexlify(self[0x4:0x14])
-        self.certifying_id = hexlify(self[0x14:0x24])
-        self.key_usage = struct.unpack('<I', self[0x24:0x28])[0]
+        # crypto material
+        self._pubexp_bits = NestedBuffer(self, 4, 0x38)
+        self._modulus_bits = NestedBuffer(self, 4, 0x3c)
+        assert self.pubexp_bits == self.modulus_bits
+        assert self.pubexp_bits in {2048, 4096}
 
-        # Option 1: it's a regular Pubkey (with a trailing signature)
-        if signature_size in [0x100, 0x200]:
-            self.signature = self[signature_start:]
-            self.signature_len = signature_size
-            self.signed = True
-        # Option 2: it's the AMD Root Signing Key (without a trailing signature)
-        elif signature_size == 0:
-            self.signature = None
-        else:
-            raise Entry.ParseError(f"unknown signature size: {hex(signature_size)}")
+        self.crypto_material = NestedBuffer(self, self.pubexp_size + self.modulus_size, self.HEADER_LEN)
+        self._pubexp = NestedBuffer(self.crypto_material, self.pubexp_size)
+        self._modulus = NestedBuffer(self.crypto_material, self.modulus_size, self.pubexp_size)
+        assert self.pubexp == 0x10001
 
-    def get_readable_magic(self):
-        # use this to show the first four characters of the key ID
-        return str(self.key_id[:4], encoding='ascii').upper()
+        # signature
+        if self.signed:
+            assert self.signature_size in {0x100, 0x200}
+            signature_start = self.HEADER_LEN + self.pubexp_size + self.modulus_size
+            self.signature = ReversedSignature(self, self.signature_size, signature_start)
 
-    def get_readable_signed_by(self):
-        return str(self.certifying_id, encoding='ascii').upper()[:4]
+    @property
+    def version(self) -> int:
+        return int.from_bytes(self._version.get_bytes(), 'little')
 
-    def get_der_encoded(self):
-        if struct.unpack('>I', self.pubexp)[0] != 65537:
-            raise NotImplementedError('Only an exponent of 65537 is supported.')
+    @property
+    def key_usage(self) -> int:
+        return int.from_bytes(self._key_usage.get_bytes(), 'little')
 
-        if len(self.modulus) == 0x100:
-            der_encoding = b'\x30\x82\x01\x22\x30\x0D\x06\x09\x2A\x86\x48\x86\xF7\x0D\x01\x01\x01\x05\x00\x03\x82\x01' \
-                           b'\x0F\x00\x30\x82\x01\x0A\x02\x82\x01\x01\x00' + self.modulus + b'\x02\x03\x01\x00\x01'
-        elif len(self.modulus) == 0x200:
-            der_encoding = b'\x30\x82\x02\x22\x30\x0D\x06\x09\x2A\x86\x48\x86\xF7\x0D\x01\x01\x01\x05\x00\x03\x82\x02' \
-                           b'\x0F\x00\x30\x82\x02\x0A\x02\x82\x02\x01\x00' + self.modulus + b'\x02\x03\x01\x00\x01'
-        else:
-            return None
+    @property
+    def pubexp_bits(self) -> int:
+        return int.from_bytes(self._pubexp_bits.get_bytes(), 'little')
 
-        return der_encoding
+    @property
+    def modulus_bits(self) -> int:
+        return int.from_bytes(self._modulus_bits.get_bytes(), 'little')
 
-    def get_pem_encoded(self):
-        return b'-----BEGIN PUBLIC KEY-----\n' + \
-               b'\n'.join(chunker(b64encode(self.get_der_encoded()), 64)) + \
-               b'\n-----END PUBLIC KEY-----\n'
+    @property
+    def pubexp_size(self) -> int:
+        assert self.pubexp_bits & 0x3 == 0
+        return self.pubexp_bits >> 3
+
+    @property
+    def modulus_size(self) -> int:
+        assert self.modulus_bits & 0x3 == 0
+        return self.modulus_bits >> 3
+
+    @property
+    def signature_size(self) -> int:
+        return self.buffer_size - self.HEADER_LEN - self.pubexp_size - self.modulus_size
+
+    @property
+    def signed(self) -> bool:
+        return self.signature_size != 0
+
+    @property
+    def pubexp(self) -> int:
+        return int.from_bytes(self._pubexp.get_bytes(), 'little')
+
+    @property
+    def modulus(self) -> int:
+        return int.from_bytes(self._modulus.get_bytes(), 'little')
 
     def get_signed_bytes(self):
-        return self.get_bytes(0, self.buffer_size - self.signature_len)
+        return self.get_bytes(0, self.buffer_size - self.signature_size)
 
-    def sign(self, private_key, certifying_id=None):
-        if certifying_id:
-            self.set_bytes(0x14, 0x10, certifying_id)
-            self.certifying_id = hexlify(certifying_id)
+    def get_readable_signed_by(self):
+        if self.signed:
+            return self.certifying_id.magic
 
-        signed_data = self.get_bytes(0, self.buffer_size - self.signature_len)
+    def get_readable_magic(self):
+        return self.key_id.magic
 
-        if private_key.key_size == 2048:
-            _hash = hashes.SHA256()
-            salt_length = 32
-        elif private_key.key_size == 4096:
-            _hash = hashes.SHA384()
-            salt_length = 48
-        else:
-            self.psptool.ph.print_warning(f"Unknown key_size: {private_key.key_size}")
-            return False
+    def get_readable_version(self):
+        return str(self.version)
 
-        try:
-            signature = private_key.sign(
-                signed_data,
-                padding.PSS(
-                    mgf=padding.MGF1(_hash),
-                    salt_length=salt_length
-                ),
-                _hash
-            )
-        except:
-            self.psptool.ph.print_warning("Signing exception")
-            return False
-
-        signature = bytearray(signature)
-        signature.reverse()
-
-        if len(signature) != self.signature_len:
-            self.psptool.ph.print_warning(f"PubkeyEntry at {self.get_address()} gets a new signature of a different size!")
-            self.buffer_size += len(signature) - self.signature_len
-            self.signature.buffer_size += len(signature) - self.signature_len
-
-        self.signature = bytearray(signature)
-        self.signature_len = len(signature)
-
-        self.set_bytes(self.buffer_size - len(signature), len(signature), signature)
-
-        return True
-
-    def verify_signature(self, pubkey=None):
-        # Only verify signature if we actually have a signature
-        if self.signature is None:
-            return False
-
-        if pubkey:
-            signed_data = self.get_signed_bytes()
-
-            signature = self.signature.copy()
-            signature.reverse()
-            signature = bytes(signature)
-
-            if self.signature_len == 0x100:
-                _hash = hashes.SHA256()
-                salt_len = 32
-            elif self.signature_len == 0x200:
-                _hash = hashes.SHA384()
-                salt_len = 48
-            else:
-                self.psptool.ph.print_warning("Weird signature len")
-                return False
-
-            try:
-                pubkey.verify(
-                    signature,
-                    signed_data,
-                    padding.PSS(
-                        mgf=padding.MGF1(_hash),
-                        salt_length=salt_len
-                    ),
-                    _hash
-                )
-            except InvalidSignature:
-                return False
-
-            return True
-
-        else:
-            pubkeys = self.blob.get_pubkeys(self.certifying_id)
-
-            for key in filter(lambda key: len(key.modulus) != self.signature_len, pubkeys):
-                self.psptool.ph.print_warning(f"Key at {hex(key.get_address())} is supposed to sign key at: "
-                                              f"{hex(self.get_address())}, but signature/key sized don't match.")
-
-            pubkeys = list(filter(lambda key: len(key.modulus) == self.signature_len, pubkeys))
-
-            if not pubkeys:
-                self.psptool.ph.print_warning(f"Couldn't find signing key for key at: {hex(self.get_address())}.")
-                return
-
-            for pubkey in pubkeys:
-                pubkey_der_encoded = pubkey.get_der_encoded()
-                crypto_pubkey = load_der_public_key(pubkey_der_encoded, backend=default_backend())
-                if self.verify_signature(crypto_pubkey):
-                    return True
-        return False
 
 
 class HeaderEntry(Entry):
+
     HEADER_LEN = 0x100
 
     def _parse(self):
@@ -748,11 +673,14 @@ class HeaderEntry(Entry):
         # Will be set by the CertificateTree created after the blob
         self.signed_entity = None
 
+        # Will be set by blob._find_inline_pubkeys
+        self.inline_keys = set()
+
         # todo: use NestedBuffers instead of saving by value
         self.magic = self.header[0x10:0x14]
         self.size_signed = struct.unpack('<I', self.header[0x14:0x18])[0]
         self.encrypted = struct.unpack('<I', self.header[0x18:0x1c])[0] == 1
-        self.signed = struct.unpack('<I', self.header[0x30:0x34])[0] == 1
+        self._signed = NestedBuffer(self, 4, 0x30)
         self.signature_fingerprint = hexlify(self.header[0x38:0x48])
         self.compressed = struct.unpack('<I', self.header[0x48:0x4c])[0] == 1
         self.size_uncompressed = struct.unpack('<I', self.header[0x50:0x54])[0]
@@ -787,30 +715,35 @@ class HeaderEntry(Entry):
 
     def _parse_signature(self):
         if self.signature_fingerprint != hexlify(16 * b'\x00'):
-            self.pubkeys = self.blob.get_pubkeys(self.signature_fingerprint)
-            if not self.pubkeys:
 
-                body_size = self.size_signed
-                if self.compressed:
-                    body_size = self.zlib_size
-                self.signature_len = self.rom_size - 0x100 - body_size
+            body_size = self.size_signed
+            if self.compressed:
+                body_size = self.zlib_size
 
-                if self.signature_len % 0x100 > 0x10:
-                    self.psptool.ph.print_warning(f"Signature size of 0x{self.signature_len:x} seems odd!")
+            self.signature_len = self.rom_size - 0x100 - body_size
+            if self.signature_len < 0:
+                self.signature_len = 0
 
-                self.signature_len >>= 8
-                self.signature_len <<= 8
+            if self.signature_len % 0x100 > 0x10:
+                self.psptool.ph.print_warning(f"Signature size of 0x{self.signature_len:x} seems odd!")
 
-                #self.psptool.ph.print_warning(f"Couldn't find corresponding key in blob for entry at: 0x{self.get_address():x}. Type: "
+            self.signature_len >>= 8
+            self.signature_len <<= 8
+
+            if self.signature_len not in {0x100, 0x200}:
+                self.psptool.ph.print_warning(f"Signature size of 0x{self.signature_len:x} seems odd!")
+                self.psptool.ph.print_warning(f"signe_sz=0x{self.size_signed:x}")
+                self.psptool.ph.print_warning(f"rom_sz=0x{self.rom_size:x}")
+                self.psptool.ph.print_warning(f"zlib_sz=0x{self.zlib_size:x}")
+
+
+            #self.psptool.ph.print_warning(f"Couldn't find corresponding key in blob for entry at: 0x{self.get_address():x}. Type: "
                               #f"{self.get_readable_type()}")
-
-                return
-            self.signature_len = len(self.pubkeys[0].modulus)
         else:
             self.psptool.ph.print_warning("ERROR: Signed but no key id present")
 
     def _parse_legacy_hdr(self):
-        self.buffer_size = self.size_signed + self.header_len
+        self.buffer_size = self.size_signed + self.header_len + self.signature_len
         self.buffer_size &= 0x00ffffff
 
         if self.compressed:
@@ -818,12 +751,12 @@ class HeaderEntry(Entry):
 
         if self.signed and not self.compressed:
             # The signature can be found in the last 'signature_len' bytes of the entry
-            self.signature = NestedBuffer(self,self.signature_len, len(self) - self.signature_len)
+            self.signature = NestedBuffer(self, self.signature_len, self.buffer_size - self.signature_len)
         else:
             # TODO create nested buffer with uncompressed signature
             # raw_bytes = zlib.decompress(self[0x100:])
             #self.signature = None
-            self.signature = NestedBuffer(self,self.signature_len, len(self) - self.signature_len)
+            self.signature = NestedBuffer(self, self.signature_len, self.buffer_size - self.signature_len)
 
         self.body = NestedBuffer(self, len(self) - self.size_signed - self.header_len, self.header_len)
         self.is_legacy = True
@@ -856,6 +789,12 @@ class HeaderEntry(Entry):
 
         self.body = NestedBuffer(self, len(self) - self.header_len - self.signature_len, self.header_len)
         self.is_legacy = False
+
+    @property
+    def signed(self) -> bool:
+        signed = int.from_bytes(self._signed.get_bytes(), 'little')
+        assert signed in {0, 1, 0xffff0000}, f'did not expect signed to be 0x{signed:x}'
+        return signed != 0
 
     def get_readable_version(self):
         return '.'.join([hex(b)[2:].upper() for b in self.version])
@@ -942,92 +881,3 @@ class HeaderEntry(Entry):
             self.psptool.ph.print_warning(f"Get bytes failed at entry: 0x{self.get_address():x} type: {self.get_readable_type()} size: 0x{self.buffer_size:x}")
         return m.hexdigest()
 
-    def sign(self, private_key, certifying_id=None):
-        if certifying_id:
-            self.header.set_bytes(0x38, 0x10, certifying_id)
-            self.signature_fingerprint = hexlify(certifying_id)
-
-        if self.compressed:
-            signed_data = self.get_signed_bytes()[:self.size_signed + self.header_len]
-        elif self.encrypted:
-            self.psptool.ph.print_warning(f'Signing encrypted entries is not supported yet')
-            return False
-        else:
-            signed_data = self[:self.size_signed + self.header_len]
-
-        if private_key.key_size == 2048 :
-            _hash = hashes.SHA256()
-            salt_length = 32
-        elif private_key.key_size == 4096:
-            _hash = hashes.SHA384()
-            salt_length = 48
-        else:
-            self.psptool.ph.print_warning(f"Unknown key_size: {private_key.key_size}")
-            return False
-
-        try:
-            signature = private_key.sign(
-              signed_data,
-              padding.PSS(
-                  mgf=padding.MGF1(_hash),
-                  salt_length=salt_length
-              ),
-              _hash
-            )
-        except:
-            self.psptool.ph.print_warning("Signing exception")
-            return False
-
-        self.signature.set_bytes(0, len(signature), signature)
-        return True
-
-    def verify_signature(self, pubkey=None):
-        # todo: remove (deprecated via crypto.py)
-        # Note: This does not work if an entry was compressed AND encrypted.
-        # However, we have not yet seen such entry.
-
-        # Only verify signature if we actually have a signature
-        if self.signature is None:
-            return False
-
-        signed_data = self.get_signed_bytes()
-
-        if pubkey:
-            if len(self.signature) == 0x100:
-                hash = hashes.SHA256()
-                salt_len = 32
-            elif len(self.signature) == 0x200:
-                hash = hashes.SHA384()
-                salt_len = 48
-            else:
-                self.psptool.ph.print_warning("Weird signature len")
-                return False
-
-            try:
-                pubkey.verify(
-                    self.signature.get_bytes(),
-                    signed_data,
-                    padding.PSS(
-                        mgf=padding.MGF1(hash),
-                        salt_length=salt_len
-                    ),
-                    hash
-                )
-            except InvalidSignature:
-                return False
-
-            return True
-
-        else:
-            for pubkey in self.pubkeys:
-                try:
-                    pubkey_der_encoded = pubkey.get_der_encoded()
-                except AttributeError:
-                    self.psptool.ph.print_warning(f"Entry {self.get_readable_type()} is signed, but corresponding "
-                                                  f"pubkey was not found ({self.get_readable_signed_by()})")
-                    continue
-                crypto_pubkey = load_der_public_key(pubkey_der_encoded, backend=default_backend())
-                if self.verify_signature(crypto_pubkey):
-                    self.psptool.ph.print_info(f"Verified {self} with {pubkey} (pubkey.key_id={pubkey.key_id})")
-                    return True
-        return False
