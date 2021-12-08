@@ -1,5 +1,5 @@
 # PSPTool - Display, extract and manipulate PSP firmware inside UEFI images
-# Copyright (C) 2019 Christian Werling, Robert Buhren
+# Copyright (C) 2021 Christian Werling, Robert Buhren, Hans Niklas Jacob
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -70,16 +70,6 @@ class PSPTool:
                 self.ls_dir(fet, index, verbose=verbose)
                 print('\n')
 
-    #    self.ls_keys(verbose=verbose)
-
-    #def ls_keys(self, verbose=False):
-    #    print("Keys:")
-    #    pubkeys = list(pe
-    #    for pks in self.blob.pubkeys.values():
-    #        pubkeys += pks
-    #    self.ls_entries(pubkeys, verbose=verbose)
-    #    print('\n')
-
     def ls_dir(self, fet,  directory_index, verbose=False):
         directory = fet.directories[directory_index]
         self.ls_entries(entries=directory.entries, verbose=verbose)
@@ -111,10 +101,8 @@ class PSPTool:
             if entry.encrypted:
                 info.append('encrypted')
             if type(entry) == HeaderEntry and entry.inline_keys:
-                inline_keys = ', '.join(map(lambda k: k.get_readable_magic(),entry.inline_keys))
+                inline_keys = ', '.join(map(lambda k: k.get_readable_magic(), entry.inline_keys))
                 info.append(f'inline_keys({inline_keys})')
-            #if entry.is_inline:
-                #info.append(f'inline(parent_entry={entry.parent_entry})')
 
             all_values = [
                 '',
@@ -150,7 +138,7 @@ class PSPTool:
         data = []
         for fet in self.blob.fets:
             for index, directory in enumerate(fet.directories):
-                t = PrettyTable(['Directory', 'Addr', 'Type', 'Magic', 'Secondary Directory'])
+                PrettyTable(['Directory', 'Addr', 'Type', 'Magic', 'Secondary Directory'])
                 d = {
                     'directory': index,
                     'address': directory.get_address(),
@@ -216,4 +204,3 @@ class PSPTool:
             out.append(all_values)
 
         return out
-

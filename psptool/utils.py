@@ -1,5 +1,5 @@
 # PSPTool - Display, extract and manipulate PSP firmware inside UEFI images
-# Copyright (C) 2019 Christian Werling, Robert Buhren
+# Copyright (C) 2021 Christian Werling, Robert Buhren, Hans Niklas Jacob
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -39,7 +39,8 @@ class NestedBuffer:
         self.parent_buffer = parent_buffer
         self.buffer_size = buffer_size
         self.buffer_offset = buffer_offset
-        assert (self.buffer_size <= self.buffer_offset + self.buffer_size), f'sz=0x{self.buffer_size:x},off=0x{self.buffer_offset:x}'
+        assert (self.buffer_size <= self.buffer_offset + self.buffer_size), \
+            f'sz=0x{self.buffer_size:x},off=0x{self.buffer_offset:x}'
 
     def __len__(self):
         return self.buffer_size

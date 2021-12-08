@@ -1,5 +1,5 @@
 # PSPTool - Display, extract and manipulate PSP firmware inside UEFI images
-# Copyright (C) 2019 Christian Werling, Robert Buhren
+# Copyright (C) 2021 Christian Werling, Robert Buhren, Hans Niklas Jacob
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -19,19 +19,15 @@ import struct
 
 from .utils import NestedBuffer
 from .utils import shannon
-from .utils import chunker
 from .utils import zlib_decompress, zlib_compress
 from .utils import decrypt
 from .utils import round_to_int
-
 from .types import KeyId, Signature, ReversedSignature
-
 from .crypto import PrivateKey
 
 from enum import Enum
 
 from binascii import hexlify
-from base64 import b64encode
 from math import ceil
 from hashlib import md5
 
@@ -225,7 +221,6 @@ class Entry(NestedBuffer):
                 blob = NestedBuffer(bytearray(total_size), total_size)
                 blob[0x100:0x100 + len(rom_data)] = rom_data
                 blob[0x100 + len(rom_data):0x100 + padded_size] = padded_size * b'\xff'
-
 
             # Set compressed bit
             if compressed:
