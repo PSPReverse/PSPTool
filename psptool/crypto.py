@@ -25,205 +25,291 @@ from cryptography.exceptions import InvalidSignature
 # Abstract classes
 
 
-class KeyType(ABC):
+class WithSignatureSize(ABC):
 
-    @property
-    @abstractmethod
-    def signature_size(self) -> int:
-        pass
+    # abstract static property
+    def __init_subclass__(cls):
+        cls.signature_size = cls._signature_size()
 
+    @classmethod
     @abstractmethod
-    def load_private_key(self, filename: str, password: str = None):
-        pass
-
-    @abstractmethod
-    def make_public_key(self, crypto_material: bytes):
+    def _signature_size(cls) -> int:
         pass
 
 
-class PublicKey(ABC):
+class PublicKey(WithSignatureSize):
 
-    @property
-    @abstractmethod
-    def key_type(self) -> KeyType:
-        pass
+    # abstract static property
+    def __init_subclass__(cls):
+        super().__init_subclass__()
 
+    # to/from crypto material
+    @classmethod
     @abstractmethod
-    def verify_blob(self, blob: bytes, signature: bytes) -> bool:
+    def from_crypto_material(cls, crypto_material: bytes):
         pass
 
     @abstractmethod
     def get_crypto_material(self, size: int) -> bytes:
         pass
 
-
-class PrivateKey(ABC):
-
-    @property
+    # core functionality
     @abstractmethod
-    def key_type(self) -> KeyType:
-        pass
-
-    @abstractmethod
-    def sign_blob(self, blob: bytes) -> bytes:
-        pass
-
-    @abstractmethod
-    def get_public_key(self) -> PublicKey:
+    def verify_blob(self, blob: bytes, signature: bytes) -> bool:
         pass
 
 
-# Global KeyType Registry
+class PrivateKey(WithSignatureSize):
 
-_key_types = dict()
-
-
-def get_key_type(name: str) -> KeyType:
-    try:
-        return _key_types[name]
-    except KeyError:
-        raise Exception(f'There is no KeyType with the name "{name}"!')
-
-
-def add_key_type(name: str, key_type: KeyType):
-    if _key_types.get(name):
-        raise Exception(f'There is already a KeyType with the name "{name}"!')
-    _key_types[name] = key_type
-
-
-# KeyType Implementations
-
-
-class RsaKeyType(KeyType):
-
-    def __init__(self, key_size: int):
-        self.key_size = key_size
-        if key_size == 2048:
-            self.hash_algorithm = hashes.SHA256()
-            self.salt_length = 32
-        elif self.key_size == 4096:
-            self.hash_algorithm = hashes.SHA384()
-            self.salt_length = 48
-        else:
-            raise Exception(f'Unknown rsa key length: {key_size}!')
-
-    @property
-    def signature_size(self) -> int:
-        return self.key_size >> 3
-
-    def padding(self):
-        return padding.PSS(
-            mgf=padding.MGF1(self.hash_algorithm),
-            salt_length=self.salt_length
-        )
-
-    def load_private_key(self, filename: str, password: str = None):
-        return RsaPrivateKey.from_file(self, filename, password)
-
-    def make_public_key(self, crypto_material: bytes) -> PublicKey:
-        return RsaPublicKey.from_crypto_material(self, crypto_material)
-
-
-add_key_type("rsa2048", RsaKeyType(2048))
-add_key_type("rsa4096", RsaKeyType(4096))
-
-
-class RsaPrivateKey(PrivateKey):
-
-    def __init__(self, key_type: RsaKeyType, private_key):
-        assert private_key.key_size == key_type.key_size, f'Key has the wrong size: {private_key.key_size} != ' \
-                                                          f'{key_type.key_size}'
-        self._key_type = key_type
-        self.private_key = private_key
+    # abstract static property
+    def __init_subclass__(cls):
+        super().__init_subclass__()
+        cls.PublicKey = cls._PublicKey()
 
     @staticmethod
-    def from_file(key_type: RsaKeyType, filename: str, password: str = None) -> PrivateKey:
-        with open(filename, 'rb') as f:
-            return RsaPrivateKey(key_type, load_pem_private_key(f.read(), password=password))
+    @abstractmethod
+    def _PublicKey() -> PublicKey:
+        pass
 
-    @property
-    def key_type(self) -> KeyType:
-        return self._key_type
+    # generate out of thin air
+    @classmethod
+    @abstractmethod
+    def generate_new(cls):
+        pass
 
-    def sign_blob(self, blob: bytes) -> bytes:
-        return self.private_key.sign(
-            blob,
-            self._key_type.padding(),
-            self._key_type.hash_algorithm
-        )
+    # to/from file
+    @classmethod
+    @abstractmethod
+    def load_from_file(cls, filename: str, password: str = None):
+        pass
 
+    @abstractmethod
+    def save_to_file(self, filename: str, password: str = None):
+        pass
+
+    # core functionality
+    @abstractmethod
     def get_public_key(self) -> PublicKey:
-        return RsaPublicKey(self._key_type, self.private_key.public_key())
+        pass
+
+    @abstractmethod
+    def sign_blob(self, blob: bytes) -> bytes:
+        pass
 
 
-class RsaPublicKey(PublicKey):
 
-    def __init__(self, key_type: RsaKeyType, public_key):
-        assert public_key.key_size == key_type.key_size, f'Key has the wrong size: {public_key.key_size} != ' \
-                                                         f'{key_type.key_size}'
-        self.public_key = public_key
-        self._key_type = key_type
+class KeyType:
+
+    _key_types = dict()
+
+    @staticmethod
+    def from_name(name: str):
+        return KeyType._key_types[name]
+
+    def __init__(self, name: str, public_key_cls, private_key_cls):
+
+        if KeyType._key_types.get(name):
+            raise Exception(f'There is already a KeyType with the name "{name}"!')
+
+        self.name = name
+
+        assert issubclass(public_key_cls, PublicKey)
+        assert issubclass(private_key_cls, PrivateKey)
+        assert private_key_cls.signature_size == public_key_cls.signature_size
+
+        self.signature_size = private_key_cls.signature_size
+        self.PublicKey = public_key_cls
+        self.PrivateKey = private_key_cls
+
+        KeyType._key_types[name] = self
+
+
+    def load_private_key(self, filename: str, password: str = None) -> PrivateKey:
+        return self.PrivateKey.load_from_file(filename, password=password)
+
+    def generate_private_key(self) -> PrivateKey:
+        return self.PrivateKey.generate_new()
+
+    def make_public_key(self, crypto_material: bytes) -> PublicKey:
+        return self.PublicKey.from_crypto_material(crypto_material)
+
+
+
+# Key Implementations
+
+
+class RsaKey(WithSignatureSize):
+
+    # abstract static property
+    def __init_subclass__(cls):
+        super().__init_subclass__()
+        cls.key_bits = None
+        if cls.signature_size:
+            cls.key_bits = cls.signature_size << 3
+            if cls.key_bits == 2048:
+                cls.hash_algorithm = hashes.SHA256()
+                cls.salt_length = 32
+            elif cls.key_bits == 4096:
+                cls.hash_algorithm = hashes.SHA384()
+                cls.salt_length = 48
+            else:
+                raise Exception(f'Unknown rsa key size: {cls.key_bits} bits!')
 
     @classmethod
-    def from_crypto_material(cls, key_type: RsaKeyType, crypto_material: bytes) -> PublicKey:
-        key_size_bytes = key_type.key_size >> 3
+    def padding(cls):
+        return padding.PSS(
+            mgf=padding.MGF1(cls.hash_algorithm),
+            salt_length=cls.salt_length
+        )
 
-        if len(crypto_material) == 2 * key_size_bytes:
-            pubexp = int.from_bytes(crypto_material[:key_size_bytes], 'little')
-            assert pubexp == 65537, f'The public exponent should always be 65537 (0x10001) not {pubexp} ({hex(pubexp)})'
-            modulus = int.from_bytes(crypto_material[key_size_bytes:], 'little')
-        elif len(crypto_material) == key_size_bytes:
+
+class RsaPublicKey(PublicKey, RsaKey):
+
+    def __init__(self, public_key):
+        super().__init__()
+        assert public_key.key_size == self.key_bits, f'Key has the wrong size: \
+                expected {self.key_bits} but got {public_key.key_size}!'
+        self._public_key = public_key
+
+    # to/from crypto material
+    @classmethod
+    #override
+    def from_crypto_material(cls, crypto_material: bytes) -> PublicKey:
+        if len(crypto_material) == 2 * cls.signature_size:
+            pubexp = int.from_bytes(crypto_material[:cls.signature_size], 'little')
+            assert pubexp == 65537, f'The public exponent should always be 65537 \
+                    (0x10001) not {pubexp} (0x{pubexp:x})!'
+            modulus = int.from_bytes(crypto_material[cls.signature_size:], 'little')
+        elif len(crypto_material) == cls.signature_size:
             pubexp = 0x10001
             modulus = int.from_bytes(crypto_material, 'little')
         else:
-            raise Exception(f'Crypto material has unknown size: {len(crypto_material)}!')
+            raise Exception(f'Crypto material has unknown size: 0x{len(crypto_material):x}!')
 
-        return RsaPublicKey(key_type, rsa.RSAPublicNumbers(pubexp, modulus).public_key())
+        return cls(rsa.RSAPublicNumbers(pubexp, modulus).public_key())
 
-    @property
-    def key_type(self) -> KeyType:
-        return self._key_type
+    #override
+    def get_crypto_material(self, size: int) -> bytes:
+        numbers = self._public_key.public_numbers()
+        modulus = numbers.n.to_bytes(self.signature_size, 'little')
 
-    # Raises an exception if the signature is not valid
-    def verify_blob(self, blob: bytes, signature: bytes):
+        if size == self.signature_size:
+            return modulus
+        elif size == 2 * self.signature_size:
+            pubexp = numbers.e.to_bytes(self.signature_size, 'little')
+            return pubexp + modulus
+        else:
+            raise Exception(f'Unknown crypto_material size: 0x{size:x} \
+                    (expected 0x{self.signature_size:x} or 0x{2*self.signature_size:x})!')
+
+    # core functionality
+    #override
+    def verify_blob(self, blob: bytes, signature: bytes) -> bool:
+        pass
         try:
-            self.public_key.verify(
+            self._public_key.verify(
                 signature,
                 blob,
-                self._key_type.padding(),
-                self._key_type.hash_algorithm
+                self.padding(),
+                self.hash_algorithm
             )
         except InvalidSignature:
             return False
         return True
 
-    def get_crypto_material(self, size: int) -> bytes:
-        key_size_bytes = self._key_type.key_size >> 3
-        numbers = self.public_key.public_numbers()
 
-        modulus = numbers.n.to_bytes(key_size_bytes, 'little')
+class RsaPrivateKey(PrivateKey, RsaKey):
 
-        if size == key_size_bytes:
-            return modulus
-        elif size == 2 * key_size_bytes:
-            pubexp = numbers.e.to_bytes(key_size_bytes, 'little')
-            return pubexp + modulus
-        else:
-            raise Exception(f'Unknown crypto_material size (0x{size:x}), expected 0x{key_size_bytes:x} or 0x{2*key_size_bytes:x}!')
+    def __init__(self, private_key):
+        super().__init__()
+        assert private_key.key_size == self.key_bits, f'Key has the wrong size: \
+                expected {self.key_bits} but got {private_key.key_size}!'
+        self._private_key = private_key
 
+    # generate out of thin air
+    @classmethod
+    #override
+    def generate_new(cls) -> PrivateKey:
+        raise NotImplementedError()
 
-# Helper Functions
-
-def load_private_key(filename: str, password: str = None) -> PrivateKey:
-    try:
+    # to/from file
+    @classmethod
+    #override
+    def load_from_file(cls, filename: str, password: str = None) -> PrivateKey:
         with open(filename, 'rb') as f:
-            private_key = load_pem_private_key(f.read(), password=password)
-    except:
-        raise Exception(f'Could not load private key from {filename}!')
+            return cls(load_pem_private_key(f.read(), password=password))
 
-    if private_key.key_size == 2048:
-        return RsaPrivateKey(get_key_type("rsa2048"), private_key)
-    if private_key.key_size == 4096:
-        return RsaPrivateKey(get_key_type("rsa4096"), private_key)
+    #override
+    def save_to_file(self, filename: str, password: str = None):
+        raise NotImplementedError()
 
-    raise Exception(f'Cannot figure out KeyType for {private_key}!')
+    # core functionality
+    #override
+    def get_public_key(self) -> PublicKey:
+        return self.PublicKey(self._private_key.public_key())
+
+    #override
+    def sign_blob(self, blob: bytes) -> bytes:
+        return self._private_key.sign(
+            blob,
+            self.padding(),
+            self.hash_algorithm
+        )
+
+
+class Rsa2048PublicKey(RsaPublicKey):
+
+    def __init__(self, public_key):
+        super().__init__(public_key)
+
+    @classmethod
+    #override
+    def _signature_size(cls) -> int:
+        return 0x100
+
+class Rsa2048PrivateKey(RsaPrivateKey):
+
+    def __init__(self, private_key):
+        super().__init__(private_key)
+
+    @staticmethod
+    #override
+    def _PublicKey() -> PublicKey:
+        return Rsa2048PublicKey
+
+    @classmethod
+    #override
+    def _signature_size(cls) -> int:
+        return 0x100
+
+
+rsa2048_key_type = KeyType("rsa2048", Rsa2048PublicKey, Rsa2048PrivateKey)
+
+
+class Rsa4096PublicKey(RsaPublicKey):
+
+    def __init__(self, public_key):
+        super().__init__(public_key)
+
+    @classmethod
+    #override
+    def _signature_size(cls) -> int:
+        return 0x200
+
+class Rsa4096PrivateKey(RsaPrivateKey):
+
+    def __init__(self, private_key):
+        super().__init__(private_key)
+
+    @staticmethod
+    #override
+    def _PublicKey() -> PublicKey:
+        return Rsa4096PublicKey
+
+    @classmethod
+    #override
+    def _signature_size(cls) -> int:
+        return 0x200
+
+rsa4096_key_type = KeyType("rsa4096", Rsa4096PublicKey, Rsa4096PrivateKey)
+

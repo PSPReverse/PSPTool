@@ -16,7 +16,7 @@
 
 from .entry import HeaderEntry, PubkeyEntry, KeyStoreEntry, KeyStoreKey
 from .utils import NestedBuffer, RangeDict
-from .crypto import PublicKey, PrivateKey, KeyType, get_key_type
+from .crypto import PublicKey, PrivateKey, KeyType
 from .types import KeyId, Signature
 
 from . import errors
@@ -139,9 +139,9 @@ class PublicKeyEntity:
     @classmethod
     def _from_pubkey_entry(cls, pke: PubkeyEntry, psptool):
         if pke.modulus_size == 0x100:
-            key_type = get_key_type('rsa2048')
+            key_type = KeyType.from_name('rsa2048')
         elif pke.modulus_size == 0x200:
-            key_type = get_key_type('rsa4096')
+            key_type = KeyType.from_name('rsa4096')
         else:
             raise Exception(f'Unknown PubkeyEntry modulus size ({hex(pke.modulus_size)}) for {pke}')
 
@@ -151,9 +151,9 @@ class PublicKeyEntity:
     def _from_key_store_key(cls, ksk: KeyStoreKey, psptool):
 
         if ksk.key_size == 2048:
-            key_type = get_key_type('rsa2048')
+            key_type = KeyType.from_name('rsa2048')
         elif ksk.key_size == 4096:
-            key_type = get_key_type('rsa4096')
+            key_type = KeyType.from_name('rsa4096')
         else:
             raise Exception(f'Unknown key_size ({ksk.key_size:x}) for {ksk}')
 
