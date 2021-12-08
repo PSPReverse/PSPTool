@@ -1,3 +1,19 @@
+# PSPTool - Display, extract and manipulate PSP firmware inside UEFI images
+# Copyright (C) 2021 Christian Werling, Robert Buhren, Hans Niklas Jacob
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
 from abc import ABC, abstractmethod
 
 from cryptography.hazmat.primitives.asymmetric import rsa
@@ -154,7 +170,7 @@ class RsaPublicKey(PublicKey):
 
         if len(crypto_material) == 2 * key_size_bytes:
             pubexp = int.from_bytes(crypto_material[:key_size_bytes], 'little')
-            assert pubexp == 65537, f'The public exponent should always be 65537 (0x10001) not {pubexp} ({hex(pubexp)})!'
+            assert pubexp == 65537, f'The public exponent should always be 65537 (0x10001) not {pubexp} ({hex(pubexp)})'
             modulus = int.from_bytes(crypto_material[key_size_bytes:], 'little')
         elif len(crypto_material) == key_size_bytes:
             pubexp = 0x10001

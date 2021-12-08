@@ -1,5 +1,5 @@
 # PSPTool - Display, extract and manipulate PSP firmware inside UEFI images
-# Copyright (C) 2019 Christian Werling, Robert Buhren
+# Copyright (C) 2021 Christian Werling, Robert Buhren, Hans Niklas Jacob
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -17,7 +17,7 @@
 import struct
 
 from .utils import NestedBuffer, chunker, fletcher32
-from .entry import Entry, PubkeyEntry, BIOS_ENTRY_TYPES
+from .entry import Entry, BIOS_ENTRY_TYPES
 
 from typing import List
 
@@ -72,7 +72,6 @@ class Directory(NestedBuffer):
 
         self._entry_size = self._ENTRY_SIZES[self.magic]
 
-        #self._parse_pubkeys()
         self._parse_entries()
 
         # check entries for a link to a secondary directory (i.e. a continuation of this directory)
@@ -119,31 +118,6 @@ class Directory(NestedBuffer):
 
         self.buffer_size = len(self.header) + len(self.body)
         self.checksum = NestedBuffer(self, 4, 4)
-
-    #def _parse_pubkeys(self):
-    #    for entry_bytes in self.body.get_chunks(self._entry_size):
-    #        entry_fields = {}
-    #        for key, word in zip(self.ENTRY_FIELDS, chunker(entry_bytes, 4)):
-    #            entry_fields[key] = struct.unpack('<I', word)[0]
-
-    #        # ROMs will be mapped into memory to fit the very end of the 32 bit memory
-    #        #  -> most ROMs are 16 MB in size, so addresses are starting at 0xFF000000
-    #        entry_fields['offset'] &= 0x00FFFFFF
-    #        #  -> some ROMs are 8 MB in size, so addresses are starting at 0xFF800000
-    #        # if len(self.blob) == 0x800000:
-    #        #     entry_fields['offset'] &= 0x7FFFFF
-
-    #        if entry_fields['type'] in self._ENTRY_TYPES_PUBKEY:
-    #            entry = Entry.from_fields(self, self.parent_buffer,
-    #                                      entry_fields['type'],
-    #                                      entry_fields['size'],
-    #                                      entry_fields['offset'],
-    #                                      self.blob,
-    #                                      self.psptool)
-    #            if isinstance(entry, PubkeyEntry):
-    #                self.blob.add_pubkey(entry)
-    #            else:
-    #                self.psptool.ph.print_warning(f"Entry type indicates pubkey but could not create PubkeyEntry")
 
     def _parse_entries(self):
         for entry_bytes in self.body.get_chunks(self._entry_size):
