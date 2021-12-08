@@ -20,6 +20,7 @@ import os
 from .psptool import PSPTool
 from .utils import ObligingArgumentParser, PrintHelper
 from .entry import PubkeyEntry, HeaderEntry
+from .crypto import PrivateKeyDict
 
 from argparse import RawTextHelpFormatter, SUPPRESS
 
@@ -42,7 +43,8 @@ def main():
     parser.add_argument('-k', '--pem-key', help=SUPPRESS, action='store_true')
     parser.add_argument('-n', '--no-duplicates', help=SUPPRESS, action='store_true')
     parser.add_argument('-j', '--json', help=SUPPRESS, action='store_true')
-    parser.add_argument('-p', '--privkeyfile', help=SUPPRESS)
+    parser.add_argument('-p', '--privkeystub', help=SUPPRESS)
+    parser.add_argument('-a', '--privkeypass', help=SUPPRESS)
 
     action = parser.add_mutually_exclusive_group(required=False)
 
@@ -76,7 +78,8 @@ def main():
         '-e idx:  specifies entry_index',
         '-s file: specifies subfile (i.e. the new entry contents)',
         '-o file: specifies outfile',
-        '-p file: specifies private key file (PEM) for re-signing'
+        '-p file: specifies file-stub for the re-signing keys',
+        '-a pass: specifies password for the re-signing keys'
         '', '']), action='store_true')
 
     args = parser.parse_args()
@@ -153,16 +156,25 @@ def main():
 
     elif args.replace_entry:
         if args.directory_index is not None and args.entry_index is not None and args.subfile is not None \
-                and args.outfile is not None and args.privkeyfile is not None:
+                and args.outfile is not None:
             with open(args.subfile, 'rb') as f:
                 sub_binary = f.read()
+
+            privkeys = None
+            if args.privkeystub:
+                privkeys = PrivateKeyDict.read_from_files(args.privkeystub, args.privkeypass)
 
             entry = psp.blob.fets[0].directories[args.directory_index].entries[args.entry_index]
             # Keep the existing entry's address, but adapt its size
             entry.move_buffer(entry.get_address(), len(sub_binary))
             entry.set_bytes(0, len(sub_binary), sub_binary)
+            if entry.signed_entity:
+                entry.signed_entity.resign_and_replace(privkeys=privkeys, recursive=True)
 
             psp.to_file(args.outfile)
+
+            if privkeys:
+                privkeys.save_to_files(args.privkeystub, args.privkeypass)
         else:
             parser.print_help(sys.stderr)
     else:

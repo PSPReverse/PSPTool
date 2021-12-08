@@ -16,7 +16,7 @@
 
 from .entry import HeaderEntry, PubkeyEntry, KeyStoreEntry, KeyStoreKey
 from .utils import NestedBuffer, RangeDict
-from .crypto import PublicKey, PrivateKey, KeyType
+from .crypto import PublicKey, PrivateKey, KeyType, PrivateKeyDict
 from .types import KeyId, Signature
 
 from . import errors
@@ -97,9 +97,16 @@ class SignedEntity:
 
     # resigns this entry only
     def resign_only(self, privkey: PrivateKey):
-        signature = privkey.sign_blob(self.entry.get_bytes())
+        print(f'Resinging {self}')
+        assert self.signature.buffer_size == privkey.signature_size
+        signature = privkey.sign_blob(self.entry.get_signed_bytes())
         assert len(signature) == self.signature.buffer_size, f'Could not resign {self} with {privkey}: The new signature has the wrong length {len(signature)} != {self.signature.buffer_size}'
         self.signature.set_bytes(0, len(signature), signature)
+
+    def resign_and_replace(self, privkeys: PrivateKeyDict = None, recursive: bool = False):
+        # this resignes self (multiple times!)
+        for pk in self.certifying_keys:
+            pk.replace_and_resign(privkeys, recursive=recursive)
 
 
 class PublicKeyEntity:
@@ -196,7 +203,38 @@ class PublicKeyEntity:
         self._crypto_material.set_bytes(0, len(crypto_material), crypto_material)
 
     def replace_only(self, pubkey: PublicKey):
-        self.replace_crypto_material(pubkey.get_crypto_material())
+        print(f'Replacing {self}')
+        assert self.key_type.signature_size == pubkey.signature_size
+        size = self._crypto_material.buffer_size
+        self.replace_crypto_material(pubkey.get_crypto_material(size))
+        assert pubkey._public_key.public_numbers() == self.get_public_key()._public_key.public_numbers()
+
+    def replace_and_resign(self, privkeys: PrivateKeyDict = None, recursive: bool = False):
+
+        # get key
+        if privkeys is None:
+            privkeys = PrivateKeyDict()
+        privkey = privkeys[self.key_type.name]
+        assert self.key_type.signature_size == privkey.signature_size
+
+        # resign children
+        for se in self.certified_entities:
+            se.resign_only(privkey)
+
+        # replace self
+        self.replace_only(privkey.get_public_key())
+
+        # check crypto
+        for se in self.certified_entities:
+            assert se.is_verified_by(self), f'Resigning {se} with {self} failed!'
+
+        # continue
+        if recursive:
+            if len(self.wrapping_entities) > 1:
+                self.psptool.ph.print_warning(f'Resigning could be in wrong order for {self.wrapping_entities}!')
+
+            for se in self.wrapping_entities:
+                se.resign_and_replace(privkeys=privkeys, recursive=True)
 
 
 class CertificateTree:

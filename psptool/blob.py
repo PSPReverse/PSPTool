@@ -181,7 +181,7 @@ class Blob(NestedBuffer):
 
         for fet in self.fets:
             for _dir in fet.directories:
-                for entry in _dir:
+                for entry in _dir.entries:
                     if entry.type == type_:
                         entries.append(entry)
 

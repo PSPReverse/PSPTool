@@ -14,10 +14,12 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+from os import listdir, mkdir, path
+
 from abc import ABC, abstractmethod
 
 from cryptography.hazmat.primitives.asymmetric import rsa
-from cryptography.hazmat.primitives.serialization import load_pem_private_key
+from cryptography.hazmat.primitives.serialization import load_pem_private_key, Encoding, PrivateFormat, BestAvailableEncryption, NoEncryption
 from cryptography.hazmat.primitives.asymmetric import padding
 from cryptography.hazmat.primitives import hashes
 from cryptography.exceptions import InvalidSignature
@@ -134,6 +136,43 @@ class KeyType:
         return self.PublicKey.from_crypto_material(crypto_material)
 
 
+def _create_parent_dirname(dirname):
+    dirname = path.dirname(dirname)
+    if not path.exists(dirname):
+        _create_parent_dirname(dirname)
+        mkdir(dirname)
+
+def create_parent_dir(filestub):
+    _create_parent_dirname(path.realpath(filestub))
+
+
+class PrivateKeyDict:
+
+    def __init__(self, keys = dict()):
+        self.keys = keys
+
+    def __getitem__(self, name: str) -> PrivateKey:
+        if not self.keys.get(name):
+            self.keys[name] = KeyType.from_name(name).generate_private_key()
+        return self.keys[name]
+
+    def save_to_files(self, filestub: str, password: str = None):
+        create_parent_dir(filestub)
+        for (name, key) in self.keys.items():
+            key.save_to_file(filestub + '.' + name, password=password)
+
+    @staticmethod
+    def read_from_files(filestub: str, password: str = None):
+        create_parent_dir(filestub)
+        dirname = path.dirname(filestub)
+        filestub = path.relpath(filestub, start=dirname)
+        keys = dict()
+        for filename in listdir(dirname):
+            if filename.startswith(filestub):
+                name = filename.rsplit('.')[-1]
+                keys[name] = KeyType.from_name(name).load_private_key(dirname + '/' + filename, password=password)
+        return PrivateKeyDict(keys)
+
 
 # Key Implementations
 
@@ -230,18 +269,26 @@ class RsaPrivateKey(PrivateKey, RsaKey):
     @classmethod
     #override
     def generate_new(cls) -> PrivateKey:
-        raise NotImplementedError()
+        return cls(rsa.generate_private_key(public_exponent=0x10001,key_size=cls.key_bits))
 
     # to/from file
     @classmethod
     #override
     def load_from_file(cls, filename: str, password: str = None) -> PrivateKey:
         with open(filename, 'rb') as f:
-            return cls(load_pem_private_key(f.read(), password=password))
+            return cls(load_pem_private_key(f.read(), password=password.encode()))
 
     #override
     def save_to_file(self, filename: str, password: str = None):
-        raise NotImplementedError()
+        encryption = NoEncryption()
+        if password:
+            encryption=BestAvailableEncryption(password.encode())
+        with open(filename, 'wb+') as f:
+            f.write(self._private_key.private_bytes(
+                encoding=Encoding.PEM,
+                format=PrivateFormat.PKCS8,
+                encryption_algorithm=encryption
+            ))
 
     # core functionality
     #override
