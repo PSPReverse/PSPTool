@@ -37,7 +37,7 @@ class PublicKey(ABC):
         pass
 
     @abstractmethod
-    def get_crypto_material(self) -> bytes:
+    def get_crypto_material(self, size: int) -> bytes:
         pass
 
 
@@ -91,6 +91,7 @@ class RsaKeyType(KeyType):
         else:
             raise Exception(f'Unknown rsa key length: {key_size}!')
 
+    @property
     def signature_size(self) -> int:
         return self.key_size >> 3
 
@@ -124,6 +125,7 @@ class RsaPrivateKey(PrivateKey):
         with open(filename, 'rb') as f:
             return RsaPrivateKey(key_type, load_pem_private_key(f.read(), password=password))
 
+    @property
     def key_type(self) -> KeyType:
         return self._key_type
 
@@ -162,6 +164,7 @@ class RsaPublicKey(PublicKey):
 
         return RsaPublicKey(key_type, rsa.RSAPublicNumbers(pubexp, modulus).public_key())
 
+    @property
     def key_type(self) -> KeyType:
         return self._key_type
 
@@ -178,14 +181,19 @@ class RsaPublicKey(PublicKey):
             return False
         return True
 
-    def get_crypto_material(self):
+    def get_crypto_material(self, size: int) -> bytes:
         key_size_bytes = self._key_type.key_size >> 3
-
         numbers = self.public_key.public_numbers()
-        pubexp = numbers.e.to_bytes(key_size_bytes, 'little')
+
         modulus = numbers.n.to_bytes(key_size_bytes, 'little')
 
-        return pubexp + modulus
+        if size == key_size_bytes:
+            return modulus
+        elif size == 2 * key_size_bytes:
+            pubexp = numbers.e.to_bytes(key_size_bytes, 'little')
+            return pubexp + modulus
+        else:
+            raise Exception(f'Unknown crypto_material size (0x{size:x}), expected 0x{key_size_bytes:x} or 0x{2*key_size_bytes:x}!')
 
 
 # Helper Functions
