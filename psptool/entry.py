@@ -29,7 +29,7 @@ from enum import Enum
 
 from binascii import hexlify
 from math import ceil
-from hashlib import md5
+from hashlib import md5, sha256
 
 BIOS_ENTRY_TYPES = [0x10062, 0x30062]
 
@@ -256,9 +256,9 @@ class Entry(NestedBuffer):
         self.parent_directory = parent_directory
 
         self.compressed = False
-        #self.signed = False
         self.encrypted = False
         self.is_legacy = False
+        self.sha256_verified = False
 
         try:
             self._parse()
@@ -269,6 +269,10 @@ class Entry(NestedBuffer):
 
     @property
     def signed(self) -> bool:
+        return False
+
+    @property
+    def has_sha256_checksum(self) -> bool:
         return False
 
     def __repr__(self):
@@ -326,6 +330,7 @@ class Entry(NestedBuffer):
         for directory in self.references:
             directory.update_entry_fields(self, self.type, self.buffer_size, self.buffer_offset)
 
+
 class KeyStoreEntry(Entry):
 
     def _parse(self):
@@ -345,6 +350,9 @@ class KeyStoreEntry(Entry):
         self.signature = Signature(self, signature_size, signature_start)
         #self.signature = ReversedSignature(self, signature_size, signature_start)
 
+        if self.header.has_sha256_checksum:
+            self.sha256_verified = self.verify_sha256()
+
         assert signature_start + signature_size == self.buffer_size
 
     def get_signed_bytes(self):
@@ -363,6 +371,24 @@ class KeyStoreEntry(Entry):
     def signed(self):
         return True
 
+    @property
+    def _sha256_checksum_flag_2(self):
+        nb = NestedBuffer(self, 0x4, 0x58)
+        return struct.unpack(">I", nb.get_bytes())[0]
+
+    @property
+    def has_sha256_checksum(self) -> bool:
+        return self.header.has_sha256_checksum
+
+    def verify_sha256(self) -> bool:
+        if self.header.sha256_checksum.get_bytes() == sha256(self.key_store.get_bytes()).digest():
+            return True
+        self.psptool.ph.print_warning(f"Could not verify sha256 checksum for {self}")
+        return False
+
+    def update_sha256(self):
+        self.header.sha256_checksum[:] = sha256(self.key_store.get_bytes()).digest()
+        self.verify_sha256()
 
 
 class KeyStoreEntryHeader(NestedBuffer):
@@ -390,9 +416,9 @@ class KeyStoreEntryHeader(NestedBuffer):
         self._sha256_checksum_flag_1 = NestedBuffer(self, 0x4, buffer_offset=0x4c)
         self._sha256_checksum_flag_2 = NestedBuffer(self, 0x4, buffer_offset=0x58)
 
+        self.sha256_checksum = None
         if self.has_sha256_checksum:
             self.sha256_checksum = NestedBuffer(self, 0x20, buffer_offset=0xd0)
-        self.sha256_checksum = None
 
         zero_ranges = {
             (0x00, 0x10),
@@ -657,7 +683,6 @@ class PubkeyEntry(Entry):
         return str(self.version)
 
 
-
 class HeaderEntry(Entry):
 
     HEADER_LEN = 0x100
@@ -706,6 +731,11 @@ class HeaderEntry(Entry):
             self._parse_legacy_hdr()
         else:
             self._parse_hdr()
+
+        self._sha256_checksum = NestedBuffer(self, 0x20, 0xd0)
+        if self.has_sha256_checksum:
+            self.sha256_verified = self.verify_sha256()
+
         return
 
     def _parse_signature(self):
@@ -790,6 +820,36 @@ class HeaderEntry(Entry):
         signed = int.from_bytes(self._signed.get_bytes(), 'little')
         assert signed in {0, 1, 0xffff0000}, f'did not expect signed to be 0x{signed:x}'
         return signed != 0
+
+    # @property
+    # def _sha256_checksum_flag_1(self):
+    #     nb = NestedBuffer(self, 0x4, 0x4c)
+    #     return struct.unpack(">I", nb.get_bytes())[0]
+    #
+    # @_sha256_checksum_flag_1.setter
+    # def _sha256_checksum_flag_1(self, value):
+    #     nb = NestedBuffer(self, 0x4, 0x4c)
+    #     nb[:] = value
+
+    @property
+    def _sha256_checksum_flag_2(self):
+        nb = NestedBuffer(self, 0x4, 0x58)
+        return struct.unpack(">I", nb.get_bytes())[0]
+
+    @property
+    def has_sha256_checksum(self) -> bool:
+        return self._sha256_checksum_flag_2 == 1
+
+    def verify_sha256(self, print_warning=True) -> bool:
+        if self._sha256_checksum.get_bytes() == sha256(self.get_decompressed_body()).digest():
+            return True
+        if print_warning:
+            self.psptool.ph.print_warning(f"Could not verify sha256 checksum for {self}")
+        return False
+
+    def update_sha256(self):
+        self._sha256_checksum[:] = sha256(self.get_decompressed_body()).digest()
+        self.verify_sha256()
 
     def get_readable_version(self):
         return '.'.join([hex(b)[2:].upper() for b in self.version])

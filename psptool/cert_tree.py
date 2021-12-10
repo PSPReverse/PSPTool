@@ -97,10 +97,20 @@ class SignedEntity:
 
     # resigns this entry only
     def resign_only(self, privkey: PrivateKey):
-        print(f'Resinging {self}')
+        print(f'Resigning {self} ({self.entry})')
+        if self.entry.has_sha256_checksum:
+            print(f'    Checking sha256 checksum of {self.entry}')
+            if self.entry.verify_sha256(print_warning=False):
+                print(f'        sha256 still valid!')
+            else:
+                print(f'        Need to rehash')
+                self.entry.update_sha256()
+                print(f'        Done')
         assert self.signature.buffer_size == privkey.signature_size
         signature = privkey.sign_blob(self.entry.get_signed_bytes())
-        assert len(signature) == self.signature.buffer_size, f'Could not resign {self} with {privkey}: The new signature has the wrong length {len(signature)} != {self.signature.buffer_size}'
+        assert len(signature) == self.signature.buffer_size, f'Could not resign {self} with {privkey}: ' \
+                                                             f'The new signature has the wrong length ' \
+                                                             f'{len(signature)} != {self.signature.buffer_size}'
         self.signature.set_bytes(0, len(signature), signature)
 
     def resign_and_replace(self, privkeys: PrivateKeyDict = None, recursive: bool = False):
