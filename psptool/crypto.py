@@ -275,8 +275,10 @@ class RsaPrivateKey(PrivateKey, RsaKey):
     @classmethod
     #override
     def load_from_file(cls, filename: str, password: str = None) -> PrivateKey:
+        if password:
+            password = password.encode()
         with open(filename, 'rb') as f:
-            return cls(load_pem_private_key(f.read(), password=password.encode()))
+            return cls(load_pem_private_key(f.read(), password=password))
 
     #override
     def save_to_file(self, filename: str, password: str = None):
