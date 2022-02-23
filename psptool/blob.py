@@ -38,7 +38,7 @@ class Blob(NestedBuffer):
         self.raw_blob = buffer
 
         self.pubkeys = {}
-        self.fets = []
+        self.fets: List[Fet] = []
         self.unique_entries = set()
 
         self.dual_rom = False

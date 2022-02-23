@@ -164,7 +164,20 @@ class Entry(NestedBuffer):
 
         elif type_ in PUBKEY_ENTRY_TYPES:
             # Option 2: it's a PubkeyEntry
-            new_entry = PubkeyEntry(parent_directory, parent_buffer, type_, size, offset, blob, psptool)
+            try:
+                new_entry = PubkeyEntry(parent_directory, parent_buffer, type_, size, offset, blob, psptool)
+            except UnknownPubkeyEntryVersion:
+                new_entry = Entry(
+                    parent_directory,
+                    parent_buffer,
+                    type_,
+                    size,
+                    offset,
+                    blob,
+                    psptool,
+                    destination=destination,
+                )
+                psptool.ph.print_warning(f"UnknownPubkeyEntryVersion for {new_entry}")
 
         elif type_ in KEY_STORE_ENTRY_TYPES:
             # Option 2: it's a KeyStoreEntry
@@ -586,6 +599,10 @@ class KeyStoreKey(NestedBuffer):
         return int.from_bytes(self._key_size.get_bytes(), 'little')
 
 
+class UnknownPubkeyEntryVersion(Exception):
+    pass
+
+
 class PubkeyEntry(Entry):
 
     HEADER_LEN = 0x40
@@ -603,7 +620,8 @@ class PubkeyEntry(Entry):
 
         # misc info
         self._version = NestedBuffer(self, 4)
-        assert self.version == 1
+        if self.version != 1:
+            raise UnknownPubkeyEntryVersion
         self._key_usage = NestedBuffer(self, 4, 0x24)
 
         # key ids
