@@ -43,13 +43,20 @@ class Fet(NestedBuffer):
 
         self._parse_entry_table()
 
+    def __repr__(self):
+        return f'Fet(len(directories)={len(self.directories)})'
+
     def _determine_size(self):
         size = 0
-        while self.fet_offset <= len(self.blob) - 4:
-            if self.blob[(self.fet_offset + size):(self.fet_offset + size + 4)] != b'\xff\xff\xff\xff':
-                size += 4
-            else:
-                break
+        step_size = 4
+        end_sequence = 2 * b'\xff\xff\xff\xff'
+
+        while self.blob[
+              (self.fet_offset + size)
+              :(self.fet_offset + size + len(end_sequence))
+              ] != end_sequence:
+            size += step_size
+
         self.fet_size = size
 
     def _determine_rom(self):
