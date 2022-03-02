@@ -38,7 +38,8 @@ class Fet(NestedBuffer):
         super().__init__(parent_buffer, len(parent_buffer), buffer_offset=self.blob_offset)
 
         # TODO: Don't assume this offset
-        self.fet = NestedBuffer(self, self.fet_size, buffer_offset=0x20000)
+        #self.fet = NestedBuffer(self, self.fet_size, buffer_offset=0x20000)
+        self.fet = NestedBuffer(self, self.fet_size, buffer_offset=self.fet_offset)
 
         self._parse_entry_table()
 
@@ -53,7 +54,8 @@ class Fet(NestedBuffer):
 
     def _determine_rom(self):
         self.mask = 0x00FFFFFF
-        self.blob_offset = self.fet_offset - 0x20000  # TODO don't assume this offset
+        #self.blob_offset = self.fet_offset - 0x20000  # TODO don't assume this offset
+        self.blob_offset = 0
 
     def _create_dir(self, addr, magic):
         if magic == b'$PSP':
@@ -89,8 +91,11 @@ class Fet(NestedBuffer):
                 for addr in combo_addresses:
                     dir_magic = self[addr:addr + 4]
                     self._create_dir(addr, dir_magic)
-            else:
+            elif dir_magic == b'$PSP':
                 self._create_dir(addr, dir_magic)
+            else:
+                #self._create_dir(addr, dir_magic)
+                pass
 
     def _parse_combo_dir(self, dir_addr):
         addresses = []

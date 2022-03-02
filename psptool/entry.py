@@ -168,16 +168,40 @@ class Entry(NestedBuffer):
 
         elif type_ in KEY_STORE_ENTRY_TYPES:
             # Option 2: it's a KeyStoreEntry
-            new_entry = KeyStoreEntry(parent_directory, parent_buffer, type_, size, offset, blob, psptool)
+            try:
+                new_entry = KeyStoreEntry(parent_directory, parent_buffer, type_, size, offset, blob, psptool)
+            except:
+                new_entry = Entry(
+                    parent_directory,
+                    parent_buffer,
+                    type_,
+                    size,
+                    offset,
+                    blob,
+                    psptool,
+                    destination=destination,
+                )
 
         if new_entry is None:
             # Option 3: it's a HeaderEntry (most common)
             if size == 0:
                 # If the size in the directory is zero, set the size to hdr len
                 size = HeaderEntry.HEADER_LEN
-            new_entry = HeaderEntry(parent_directory, parent_buffer, type_, size, offset, blob, psptool)
-            if size == 0:
-                psptool.ph.print_warning(f"Entry with zero size. Type: {type_}. Dir: 0x{offset:x}")
+            try:
+                new_entry = HeaderEntry(parent_directory, parent_buffer, type_, size, offset, blob, psptool)
+                if size == 0:
+                    psptool.ph.print_warning(f"Entry with zero size. Type: {type_}. Dir: 0x{offset:x}")
+            except:
+                new_entry = Entry(
+                    parent_directory,
+                    parent_buffer,
+                    type_,
+                    size,
+                    offset,
+                    blob,
+                    psptool,
+                    destination=destination,
+                )
 
         return new_entry
 
@@ -380,10 +404,11 @@ class KeyStoreEntry(Entry):
     def has_sha256_checksum(self) -> bool:
         return self.header.has_sha256_checksum
 
-    def verify_sha256(self) -> bool:
+    def verify_sha256(self, print_warning=True) -> bool:
         if self.header.sha256_checksum.get_bytes() == sha256(self.key_store.get_bytes()).digest():
             return True
-        self.psptool.ph.print_warning(f"Could not verify sha256 checksum for {self}")
+        if print_warning:
+            self.psptool.ph.print_warning(f"Could not verify sha256 checksum for {self}")
         return False
 
     def update_sha256(self):
