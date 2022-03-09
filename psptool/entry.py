@@ -768,20 +768,21 @@ class HeaderEntry(Entry):
                 self.signature_len = 0
 
             if self.signature_len % 0x100 > 0x10:
-                self.psptool.ph.print_warning(f"Signature size of 0x{self.signature_len:x} seems odd!")
+                # self.psptool.ph.print_warning(f"Signature size of 0x{self.signature_len:x} seems odd!")
+                pass
 
             self.signature_len >>= 8
             self.signature_len <<= 8
 
             if self.signature_len not in {0x100, 0x200}:
-                self.psptool.ph.print_warning(f"Signature size of 0x{self.signature_len:x} seems odd!")
-                self.psptool.ph.print_warning(f"signe_sz=0x{self.size_signed:x}")
-                self.psptool.ph.print_warning(f"rom_sz=0x{self.rom_size:x}")
-                self.psptool.ph.print_warning(f"zlib_sz=0x{self.zlib_size:x}")
+                # self.psptool.ph.print_warning(f"Signature size of 0x{self.signature_len:x} seems odd!")
+                # self.psptool.ph.print_warning(f"signe_sz=0x{self.size_signed:x}")
+                # self.psptool.ph.print_warning(f"rom_sz=0x{self.rom_size:x}")
+                # self.psptool.ph.print_warning(f"zlib_sz=0x{self.zlib_size:x}")
+                pass
 
-
-            #self.psptool.ph.print_warning(f"Couldn't find corresponding key in blob for entry at: 0x{self.get_address():x}. Type: "
-                              #f"{self.get_readable_type()}")
+            # self.psptool.ph.print_warning(f"Couldn't find corresponding key in blob for entry at: 0x{self.get_address():x}. Type: "
+                              # f"{self.get_readable_type()}")
         else:
             self.psptool.ph.print_warning("ERROR: Signed but no key id present")
 

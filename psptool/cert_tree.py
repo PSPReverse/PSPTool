@@ -114,7 +114,7 @@ class SignedEntity:
         self.signature.set_bytes(0, len(signature), signature)
 
     def resign_and_replace(self, privkeys: PrivateKeyDict = None, recursive: bool = False):
-        # this resignes self (multiple times!)
+        # this resigns self (multiple times!)
         for pk in self.certifying_keys:
             pk.replace_and_resign(privkeys, recursive=recursive)
 
