@@ -120,6 +120,8 @@ class Directory(NestedBuffer):
         self.checksum = NestedBuffer(self, 4, 4)
 
     def _parse_entries(self):
+        self.entries = []
+
         for entry_bytes in self.body.get_chunks(self._entry_size):
             entry_fields = {}
             for key, word in zip(self.ENTRY_FIELDS, chunker(entry_bytes, 4)):

@@ -77,7 +77,8 @@ class NestedBuffer:
         if old_slice.stop is None:
             stop = self.buffer_offset + self.buffer_size
         else:
-            assert (old_slice.stop <= self.buffer_size)
+            assert (old_slice.stop <= self.buffer_size), \
+                f'{old_slice.stop=},{self.buffer_size=}'
             if old_slice.stop < 0:
                 stop = self.buffer_offset + old_slice.stop % self.buffer_size
             else:

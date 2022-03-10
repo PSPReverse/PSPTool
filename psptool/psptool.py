@@ -15,7 +15,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from prettytable import PrettyTable
-import json
+import sys, json
 
 from .entry import Entry, HeaderEntry
 from .blob import Blob
@@ -52,6 +52,9 @@ class PSPTool:
     def to_file(self, filename):
         with open(filename, 'wb') as f:
             f.write(self.blob.get_buffer())
+
+    def to_stdout(self):
+        sys.stdout.buffer.write(self.blob.get_buffer())
 
     def ls(self, verbose=False):
         for fet in self.blob.fets:
