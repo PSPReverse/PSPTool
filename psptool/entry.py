@@ -767,6 +767,7 @@ class HeaderEntry(Entry):
             if self.signature_len < 0:
                 self.signature_len = 0
             if self.signature_len > 0x200:
+
                 # this is a best-effort guess made for e.g. PSP_FW_TRUSTED_OS~0x2
                 self.signature_len = 0x100
 
