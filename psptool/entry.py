@@ -35,7 +35,7 @@ BIOS_ENTRY_TYPES = [0x10062, 0x30062]
 
 
 class Entry(NestedBuffer):
-    ENTRY_ALIGNMENT = 0x100
+    ENTRY_ALIGNMENT = 0x10
 
     UNWRAPPED_IKEK_ZEN_PLUS = b'\x4c\x77\x63\x65\x32\xfe\x4c\x6f\xd6\xb9\xd6\xd7\xb5\x1e\xde\x59'
     HASH_IKEK_ZEN_PLUS = b'\xe2\x84\xda\xe0\x6e\x58\x01\x04\xfa\x6e\x8e\x6b\x58\x68\x8a\x0c'
