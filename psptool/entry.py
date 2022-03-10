@@ -766,6 +766,9 @@ class HeaderEntry(Entry):
             self.signature_len = self.rom_size - 0x100 - body_size
             if self.signature_len < 0:
                 self.signature_len = 0
+            if self.signature_len > 0x200:
+                # this is a best-effort guess made for e.g. PSP_FW_TRUSTED_OS~0x2
+                self.signature_len = 0x100
 
             if self.signature_len % 0x100 > 0x10:
                 # self.psptool.ph.print_warning(f"Signature size of 0x{self.signature_len:x} seems odd!")
@@ -793,13 +796,7 @@ class HeaderEntry(Entry):
         if self.compressed:
             self.zlib_size = self.size_signed
 
-        if self.signed and not self.compressed:
-            # The signature can be found in the last 'signature_len' bytes of the entry
-            self.signature = NestedBuffer(self, self.signature_len, self.buffer_size - self.signature_len)
-        else:
-            # TODO create nested buffer with uncompressed signature
-            # raw_bytes = zlib.decompress(self[0x100:])
-            #self.signature = None
+        if self.signed:
             self.signature = NestedBuffer(self, self.signature_len, self.buffer_size - self.signature_len)
 
         self.body = NestedBuffer(self, len(self) - self.size_signed - self.header_len, self.header_len)
