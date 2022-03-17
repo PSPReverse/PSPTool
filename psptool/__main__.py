@@ -43,6 +43,7 @@ def main():
     parser.add_argument('-k', '--pem-key', help=SUPPRESS, action='store_true')
     parser.add_argument('-n', '--no-duplicates', help=SUPPRESS, action='store_true')
     parser.add_argument('-j', '--json', help=SUPPRESS, action='store_true')
+    parser.add_argument('-t', '--key-tree', help=SUPPRESS, action='store_true')
     parser.add_argument('-p', '--privkeystub', help=SUPPRESS)
     parser.add_argument('-a', '--privkeypass', help=SUPPRESS)
 
@@ -50,10 +51,11 @@ def main():
 
     action.add_argument('-E', '--entries', help='\n'.join([
         'Default: Parse and display PSP firmware entries.',
-        '[-n]',
+        '[-n] [-j] [-t]',
         '',
         '-n:      list unique entries only ordered by their offset',
         '-j:      output in JSON format instead of tables',
+        '-t:      print tree of all signed entities and their certifying keys',
         '', '']), action='store_true')
 
     action.add_argument('-X', '--extract-entry', help='\n'.join([
@@ -72,13 +74,13 @@ def main():
     action.add_argument('-R', '--replace-entry', help='\n'.join([
         'Copy a new entry (including header and signature) into the',
         'ROM file and update metadata accordingly.',
-        '-d idx -e idx -s subfile -o outfile',
+        '-d idx -e idx -s subfile -o outfile [-p file-stub] [-a pass]',
         '',
         '-d idx:  specifies directory_index',
         '-e idx:  specifies entry_index',
         '-s file: specifies subfile (i.e. the new entry contents)',
         '-o file: specifies outfile',
-        '-p file: specifies file-stub for the re-signing keys',
+        '-p file: specifies file-stub (e.g. \'keys/id\') for the re-signing keys',
         '-a pass: specifies password for the re-signing keys'
         '', '']), action='store_true')
 
@@ -186,11 +188,12 @@ def main():
             print(psp.blob.agesa_version)
         if args.json:
             psp.ls_json(verbose=args.verbose)
+        elif args.key_tree:
+            psp.cert_tree.print_key_tree()
         elif args.no_duplicates:
             psp.ls_entries(verbose=args.verbose)
         else:
             psp.ls(verbose=args.verbose)
-            psp.cert_tree.print_key_tree()
 
     # Output handling (stdout or outfile)
     if output is not None:
