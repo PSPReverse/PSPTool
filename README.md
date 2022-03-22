@@ -571,10 +571,11 @@ positional arguments:
 
 optional arguments:
   -E, --entries        Default: Parse and display PSP firmware entries.
-                       [-n]
+                       [-n] [-j] [-t]
 
                        -n:      list unique entries only ordered by their offset
                        -j:      output in JSON format instead of tables
+                       -t:      print tree of all signed entities and their certifying keys
 
   -X, --extract-entry  Extract one or more PSP firmware entries.
                        [-d idx [-e idx]] [-n] [-u] [-c] [-k] [-o outfile]
@@ -589,12 +590,14 @@ optional arguments:
 
   -R, --replace-entry  Copy a new entry (including header and signature) into the
                        ROM file and update metadata accordingly.
-                       -d idx -e idx -s subfile -o outfile
+                       -d idx -e idx -s subfile -o outfile [-p file-stub] [-a pass]
 
                        -d idx:  specifies directory_index
                        -e idx:  specifies entry_index
                        -s file: specifies subfile (i.e. the new entry contents)
                        -o file: specifies outfile
+                       -p file: specifies file-stub (e.g. 'keys/id') for the re-signing keys
+                       -a pass: specifies password for the re-signing keys
 ```
 
 ## Python Usage

@@ -35,7 +35,7 @@ BIOS_ENTRY_TYPES = [0x10062, 0x30062]
 
 
 class Entry(NestedBuffer):
-    ENTRY_ALIGNMENT = 0x100
+    ENTRY_ALIGNMENT = 0x10
 
     UNWRAPPED_IKEK_ZEN_PLUS = b'\x4c\x77\x63\x65\x32\xfe\x4c\x6f\xd6\xb9\xd6\xd7\xb5\x1e\xde\x59'
     HASH_IKEK_ZEN_PLUS = b'\xe2\x84\xda\xe0\x6e\x58\x01\x04\xfa\x6e\x8e\x6b\x58\x68\x8a\x0c'
@@ -791,22 +791,27 @@ class HeaderEntry(Entry):
             self.signature_len = self.rom_size - 0x100 - body_size
             if self.signature_len < 0:
                 self.signature_len = 0
+            if self.signature_len > 0x200:
+
+                # this is a best-effort guess made for e.g. PSP_FW_TRUSTED_OS~0x2
+                self.signature_len = 0x100
 
             if self.signature_len % 0x100 > 0x10:
-                self.psptool.ph.print_warning(f"Signature size of 0x{self.signature_len:x} seems odd!")
+                # self.psptool.ph.print_warning(f"Signature size of 0x{self.signature_len:x} seems odd!")
+                pass
 
             self.signature_len >>= 8
             self.signature_len <<= 8
 
             if self.signature_len not in {0x100, 0x200}:
-                self.psptool.ph.print_warning(f"Signature size of 0x{self.signature_len:x} seems odd!")
-                self.psptool.ph.print_warning(f"signe_sz=0x{self.size_signed:x}")
-                self.psptool.ph.print_warning(f"rom_sz=0x{self.rom_size:x}")
-                self.psptool.ph.print_warning(f"zlib_sz=0x{self.zlib_size:x}")
+                # self.psptool.ph.print_warning(f"Signature size of 0x{self.signature_len:x} seems odd!")
+                # self.psptool.ph.print_warning(f"signe_sz=0x{self.size_signed:x}")
+                # self.psptool.ph.print_warning(f"rom_sz=0x{self.rom_size:x}")
+                # self.psptool.ph.print_warning(f"zlib_sz=0x{self.zlib_size:x}")
+                pass
 
-
-            #self.psptool.ph.print_warning(f"Couldn't find corresponding key in blob for entry at: 0x{self.get_address():x}. Type: "
-                              #f"{self.get_readable_type()}")
+            # self.psptool.ph.print_warning(f"Couldn't find corresponding key in blob for entry at: 0x{self.get_address():x}. Type: "
+                              # f"{self.get_readable_type()}")
         else:
             self.psptool.ph.print_warning("ERROR: Signed but no key id present")
 
@@ -817,13 +822,7 @@ class HeaderEntry(Entry):
         if self.compressed:
             self.zlib_size = self.size_signed
 
-        if self.signed and not self.compressed:
-            # The signature can be found in the last 'signature_len' bytes of the entry
-            self.signature = NestedBuffer(self, self.signature_len, self.buffer_size - self.signature_len)
-        else:
-            # TODO create nested buffer with uncompressed signature
-            # raw_bytes = zlib.decompress(self[0x100:])
-            #self.signature = None
+        if self.signed:
             self.signature = NestedBuffer(self, self.signature_len, self.buffer_size - self.signature_len)
 
         self.body = NestedBuffer(self, len(self) - self.size_signed - self.header_len, self.header_len)

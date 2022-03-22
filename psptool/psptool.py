@@ -15,9 +15,9 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from prettytable import PrettyTable
-import json
+import sys, json
 
-from .entry import HeaderEntry
+from .entry import Entry, HeaderEntry
 from .blob import Blob
 from .utils import PrintHelper
 from .cert_tree import CertificateTree
@@ -53,6 +53,9 @@ class PSPTool:
         with open(filename, 'wb') as f:
             f.write(self.blob.get_buffer())
 
+    def to_stdout(self):
+        sys.stdout.buffer.write(self.blob.get_buffer())
+
     def ls(self, verbose=False):
         for fet in self.blob.fets:
             for index, directory in enumerate(fet.directories):
@@ -85,19 +88,28 @@ class PSPTool:
         t = PrettyTable(basic_fields + verbose_fields)
         t.align = 'r'
 
+        # TODO: Skip this whole mess and introduce strict and non_strict mode
+        #  strict mode should parse everything but give inconsistency errors like sha256_inconsistent
+        entry: Entry
         for index, entry in enumerate(entries):
             info = []
             if entry.compressed:
                 info.append('compressed')
             if entry.signed:
-                info.append(f'signed({entry.get_readable_signed_by()})')
                 try:
                     if entry.signed_entity.is_verified():
-                        info.append('verified')
+                        info.append(f'verified({entry.get_readable_signed_by()})')
                 except errors.NoCertifyingKey:
                     info.append('no_key')
+                except errors.SignatureInvalid:
+                    info.append(f'invalid_sig({entry.get_readable_signed_by()})')
+            if entry.has_sha256_checksum:
+                if entry.sha256_verified:
+                    info.append(f'sha256_ok')
+                else:
+                    info.append(f'sha256_inconsistent')
             if entry.is_legacy:
-                info.append('legacy header')
+                info.append('legacy_header')
             if entry.encrypted:
                 info.append('encrypted')
             if type(entry) == HeaderEntry and entry.inline_keys:

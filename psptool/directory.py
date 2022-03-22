@@ -120,6 +120,8 @@ class Directory(NestedBuffer):
         self.checksum = NestedBuffer(self, 4, 4)
 
     def _parse_entries(self):
+        self.entries = []
+
         for entry_bytes in self.body.get_chunks(self._entry_size):
             entry_fields = {}
             for key, word in zip(self.ENTRY_FIELDS, chunker(entry_bytes, 4)):
@@ -172,7 +174,8 @@ class Directory(NestedBuffer):
 
         assert(entry_index is not None)
 
-        # apparently this masking is not needed anymore: offset |= 0xFF000000
+        # apparently this masking is still needed for the PSP to parse stuff correctly
+        offset |= 0xFF000000
 
         # update type, size, offset (but not rsv0 (nor rsv1 nor rsv2 in $BHD/$BLD directories))
         entry_bytes = b''.join([struct.pack('<I', value) for value in [type_, size, offset]])
