@@ -109,6 +109,8 @@ class Entry(NestedBuffer):
 
     }
 
+    KEY_STORE_ENTRY_TYPES = [0x50, 0x51]
+
     class Type(Enum):
         NO_HDR_ENTRY = 1
         PUBKEY = 2
@@ -125,8 +127,6 @@ class Entry(NestedBuffer):
         # Try to parse these ID's as a key entry
         # todo: consolidate these constants with Directory._ENTRY_TYPES_PUBKEY
         PUBKEY_ENTRY_TYPES = [0x0, 0x9, 0xa, 0x5, 0xd, 0x43, 0x4e, 0xdead]
-
-        KEY_STORE_ENTRY_TYPES = [0x50]
 
         # Types known to have no PSP HDR
         # TODO: Find a better way to identify those entries
@@ -179,7 +179,7 @@ class Entry(NestedBuffer):
                 )
                 psptool.ph.print_warning(f"UnknownPubkeyEntryVersion for {new_entry}")
 
-        elif type_ in KEY_STORE_ENTRY_TYPES:
+        elif type_ in Entry.KEY_STORE_ENTRY_TYPES:
             # Option 2: it's a KeyStoreEntry
             try:
                 new_entry = KeyStoreEntry(parent_directory, parent_buffer, type_, size, offset, blob, psptool)
@@ -447,9 +447,11 @@ class KeyStoreEntryHeader(NestedBuffer):
 
         self._unknown_constant_1 = NestedBuffer(self, 0x4, buffer_offset=0x30)
         self._unknown_constant_2 = NestedBuffer(self, 0x4, buffer_offset=0x34)
-        self._unknown_constant_3 = NestedBuffer(self, 0x4, buffer_offset=0x7c)
+        assert self.unknown_constants == (b'\1\0\0\0', b'\2\0\0\0')
 
-        assert self.unknown_constants == (b'\1\0\0\0', b'\2\0\0\0', b'P\0\0\0')
+        self._entry_type = NestedBuffer(self, 0x4, buffer_offset=0x7c)
+        assert self.entry_type in Entry.KEY_STORE_ENTRY_TYPES
+
 
         self._sha256_checksum_flag_1 = NestedBuffer(self, 0x4, buffer_offset=0x4c)
         self._sha256_checksum_flag_2 = NestedBuffer(self, 0x4, buffer_offset=0x58)
@@ -488,6 +490,10 @@ class KeyStoreEntryHeader(NestedBuffer):
         return int.from_bytes(self._packed_size.get_bytes(), 'little')
 
     @property
+    def entry_type(self) -> int:
+        return int.from_bytes(self._entry_type.get_bytes(), 'little')
+
+    @property
     def signature_size(self) -> int:
         return self.packed_size - self.HEADER_SIZE - self.body_size
 
@@ -496,7 +502,6 @@ class KeyStoreEntryHeader(NestedBuffer):
         return (
                 self._unknown_constant_1.get_bytes(),
                 self._unknown_constant_2.get_bytes(),
-                self._unknown_constant_3.get_bytes(),
                 )
 
     @property
