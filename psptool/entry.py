@@ -166,7 +166,7 @@ class Entry(NestedBuffer):
             # Option 2: it's a PubkeyEntry
             try:
                 new_entry = PubkeyEntry(parent_directory, parent_buffer, type_, size, offset, blob, psptool)
-            except UnknownPubkeyEntryVersion:
+            except Exception as e:
                 new_entry = Entry(
                     parent_directory,
                     parent_buffer,
@@ -177,7 +177,7 @@ class Entry(NestedBuffer):
                     psptool,
                     destination=destination,
                 )
-                psptool.ph.print_warning(f"UnknownPubkeyEntryVersion for {new_entry}")
+                psptool.ph.print_warning(f"{e.__class__.__name__} for {new_entry}")
 
         elif type_ in Entry.KEY_STORE_ENTRY_TYPES:
             # Option 2: it's a KeyStoreEntry
