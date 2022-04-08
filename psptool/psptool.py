@@ -83,7 +83,7 @@ class PSPTool:
             entries = sorted(self.blob.unique_entries)
 
         basic_fields = [' ', 'Entry', 'Address', 'Size', 'Type', 'Magic/ID', 'Version', 'Info']
-        verbose_fields = ['MD5', 'size_signed', 'size_full', 'size_packed']
+        verbose_fields = ['MD5', 'size_signed', 'size_full', 'size_packed', 'load_addr']
 
         t = PrettyTable(basic_fields + verbose_fields)
         t.align = 'r'
@@ -132,10 +132,11 @@ class PSPTool:
                 all_values += [hex(v) for v in [
                     entry.size_signed,
                     entry.size_uncompressed,
-                    entry.rom_size
+                    entry.rom_size,
+                    entry.load_addr
                 ]]
             else:
-                all_values += (3 * [''])
+                all_values += (4 * [''])
 
             t.add_row(all_values)
 
