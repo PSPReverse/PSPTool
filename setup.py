@@ -8,4 +8,6 @@ with open('README.md') as f:
 setup(
     long_description=long_description,
     long_description_content_type='text/markdown',
+    use_scm_version=True,
+    setup_requires=['setuptools_scm'],
 )
