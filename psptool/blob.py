@@ -85,6 +85,14 @@ class Blob(NestedBuffer):
             else:
                 self.psptool.ph.print_warning(f"Found two AGESA versions strings, but only one firmware entry table")
 
+    def all_entries(self):
+        directories = [directory for fet in self.fets for directory in fet.directories]
+
+        directory_entries = [directory.entries for directory in directories]
+        # flatten list of lists
+        all_entries = [entry for sublist in directory_entries for entry in sublist]
+        return all_entries
+
     def find_pubkey(self, fp):
         """ Try to find a pubkey anywhere in the blob.
         The pubkey is identified by its fingerprint. If found, the pubkey is
