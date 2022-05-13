@@ -30,7 +30,7 @@ def main():
     parser = ObligingArgumentParser(description='Display, extract, and manipulate AMD PSP firmware inside BIOS ROMs.\n',
                                     formatter_class=RawTextHelpFormatter, add_help=False)
 
-    parser.add_argument('file', help='Binary file to be parsed for PSP firmware', nargs='*')
+    parser.add_argument('file', help='Binary file to be parsed for PSP firmware', nargs='?')
     parser.add_argument('-h', '--help', action='help', help=SUPPRESS)
     parser.add_argument('-v', '--verbose', help=SUPPRESS, action='store_true')
 
@@ -85,6 +85,9 @@ def main():
 
     if args.version:
         print(pkg_resources.get_distribution("psptool").version)
+        sys.exit(0)
+    elif not args.file:
+        parser.print_help(sys.stderr)
         sys.exit(0)
 
     psp = PSPTool.from_file(args.file, verbose=args.verbose)
