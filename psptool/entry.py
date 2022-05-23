@@ -830,7 +830,8 @@ class HeaderEntry(Entry):
         if self.signed:
             self.signature = NestedBuffer(self, self.signature_len, self.buffer_size - self.signature_len)
 
-        self.body = NestedBuffer(self, len(self) - self.size_signed - self.header_len, self.header_len)
+        self.body = NestedBuffer(self, len(self) - self.header_len, self.header_len)
+
         self.is_legacy = True
 
     def _parse_hdr(self):
