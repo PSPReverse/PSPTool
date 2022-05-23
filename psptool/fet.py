@@ -20,106 +20,100 @@ from .directory import Directory
 from typing import List
 
 
+class EmptyFet(Exception):
+    pass
+
+
 class Fet(NestedBuffer):
-    def __init__(self, parent_buffer, fet_offset: int, agesa_version, psptool):
+    def __init__(self, parent_rom, fet_offset: int, psptool):
 
-        # The nested buffer that represents the whole binary
-        self.blob = parent_buffer
+        self.rom = parent_rom
         self.psptool = psptool
-
-        self.fet_offset = fet_offset
-
-        self.agesa_version = agesa_version
         self.directories: List[Directory] = []
 
-        self._determine_size()
-        self._determine_rom()
-
-        super().__init__(parent_buffer, len(parent_buffer), buffer_offset=self.blob_offset)
-
-        # TODO: Don't assume this offset
-        #self.fet = NestedBuffer(self, self.fet_size, buffer_offset=0x20000)
-        self.fet = NestedBuffer(self, self.fet_size, buffer_offset=self.fet_offset)
+        super().__init__(
+            self.rom,
+            self._determine_size(fet_offset),
+            buffer_offset=fet_offset
+        )
 
         self._parse_entry_table()
 
     def __repr__(self):
         return f'Fet(len(directories)={len(self.directories)})'
 
-    def _determine_size(self):
+    def _determine_size(self, fet_offset):
         size = 0
         step_size = 4
-        end_sequence = 2 * b'\xff\xff\xff\xff'
+        end_sequence = 4 * b'\xff\xff\xff\xff'
 
-        while self.blob[
-              (self.fet_offset + size)
-              :(self.fet_offset + size + len(end_sequence))
+        while self.rom[
+              (fet_offset + size)
+              :(fet_offset + size + len(end_sequence))
               ] != end_sequence:
             size += step_size
 
-        self.fet_size = size
+        if size <= 0:
+            raise EmptyFet()
+        return size
 
-    def _determine_rom(self):
-        self.mask = 0x00FFFFFF
-        #self.blob_offset = self.fet_offset - 0x20000  # TODO don't assume this offset
-        self.blob_offset = 0
-
-    def _create_dir(self, addr, magic):
+    def _create_directory(self, addr, magic):
+        # todo: move this responsibility to the parent ROM
         if magic == b'$PSP':
             type_ = "PSP"
         elif magic == b'$BHD':
             type_ = "BIOS"
         else:
-            # TODO: Better warning
-            # print_warning("Weird PSP Combo directory. Please report this")
+            # TODO: improve handling
+            self.psptool.ph.print_warning(f"Weird PSP Combo directory at {hex(addr)}")
             return
-        dir_ = Directory(self, addr, type_, self.blob, self.psptool)
+        dir_ = Directory(self.rom, addr, type_, self.psptool)
         self.directories.append(dir_)
         if dir_.secondary_directory_address is not None:
             self.directories.append(
-                Directory(self, dir_.secondary_directory_address, 'secondary', self.blob, self.psptool)
+                Directory(self.rom, dir_.secondary_directory_address, 'secondary', self.psptool)
             )
 
     def _parse_entry_table(self):
-        entries = self.fet.get_chunks(4, 4)
+        entries = self.get_chunks(4, 4)
         for _index, entry in enumerate(entries):
             addr = int.from_bytes(entry, 'little')
             # TODO: Why is 0xFFFFFFFe a possible value here?
             if addr in [0x0, 0xFFFFFFFF, 0xFFFFFFFe]:
                 continue
-            addr &= self.mask
+            addr &= self.rom.addr_mask
             try:
-                dir_magic = self[addr:addr + 4]
+                dir_magic = self.rom[addr:addr + 4]
             except:
-                print(f"FET entry 0x{addr:x} not found or invalid, skipping ...")
+                self.psptool.ph.print_warning(f"FET entry 0x{addr:x} not found or invalid, skipping ...")
                 continue
             if dir_magic == b'2PSP':
                 combo_addresses = self._parse_combo_dir(addr)
                 for addr in combo_addresses:
-                    dir_magic = self[addr:addr + 4]
-                    self._create_dir(addr, dir_magic)
+                    dir_magic = self.rom[addr:addr + 4]
+                    self._create_directory(addr, dir_magic)
             elif dir_magic == b'$PSP':
-                self._create_dir(addr, dir_magic)
+                self._create_directory(addr, dir_magic)
             else:
-                #self._create_dir(addr, dir_magic)
+                self._create_directory(addr, dir_magic)
                 pass
 
     def _parse_combo_dir(self, dir_addr):
         addresses = []
-        nr_entries = int.from_bytes(self[dir_addr + 8: dir_addr + 0xc],
+        no_of_entries = int.from_bytes(self.rom[dir_addr + 8: dir_addr + 0xc],
                                     'little')
-        combo_dir = self[dir_addr: dir_addr + 16 * (nr_entries + 2)]
+        combo_dir = self.rom[dir_addr: dir_addr + 16 * (no_of_entries + 2)]
 
         # Combo dir entries seem to begin at offset 0x20, make sure we don't
         # miss directories that don't adhere to that rule
         assert(combo_dir[0x10:0x20] == (b'\x00' * 16))
 
-        for i in range(2, nr_entries+2):
+        for i in range(2, no_of_entries+2):
             entry = combo_dir[i * 16 + 0x8: i * 16 + 0xc]
             entry_addr = int.from_bytes(entry, 'little')
             if entry_addr in [0, 0xFFFFFFFF]:
                 continue
-            entry_addr &= self.mask
+            entry_addr &= self.rom.addr_mask
             # entry_addr += self.blob_offset
             addresses.append(entry_addr)
 

@@ -49,23 +49,20 @@ class Directory(NestedBuffer):
     _ENTRY_TYPES_SECONDARY_DIR = [0x40, 0x70]
     _ENTRY_TYPES_PUBKEY = [0x0, 0x9, 0xa, 0x5, 0xd]
 
-    def __init__(self, parent_buffer, buffer_offset: int, type_: str, blob, psptool):
-        self.parent_buffer = parent_buffer
+    def __init__(self, parent_rom, rom_address: int, type_: str, psptool):
+        self.rom = parent_rom
 
         # The offset of this directory as specified in the FET
-        self.buffer_offset = buffer_offset
+        self.buffer_offset = rom_address
 
         self.psptool = psptool
-        self.blob = blob
-        self.fet = parent_buffer.fet
-
         self.checksum = None
         self._count = None
 
         # a directory must parse itself before it knows its size and can initialize its buffer
         self._parse_header()
 
-        super().__init__(self.parent_buffer, self.buffer_size, buffer_offset=self.buffer_offset)
+        super().__init__(self.rom, self.buffer_size, buffer_offset=self.buffer_offset)
 
         self.type = type_
         self.entries: List[Entry] = []
@@ -101,10 +98,10 @@ class Directory(NestedBuffer):
     def _parse_header(self):
         # ugly to do this manually, but we do not know our size yet
         self._count = int.from_bytes(
-            self.parent_buffer[self.buffer_offset + 8: self.buffer_offset + 12],
+            self.rom[self.buffer_offset + 8: self.buffer_offset + 12],
             'little'
         )
-        self.magic = self.parent_buffer.get_bytes(self.buffer_offset, 4)
+        self.magic = self.rom.get_bytes(self.buffer_offset, 4)
 
         self.header = NestedBuffer(
             self,
@@ -142,16 +139,16 @@ class Directory(NestedBuffer):
                                       entry_fields['type'],
                                       entry_fields['size'],
                                       entry_fields['offset'],
-                                      self.blob,
+                                      self.rom,
                                       self.psptool,
                                       destination=destination)
 
-            for existing_entry in self.blob.unique_entries:
+            for existing_entry in self.rom.unique_entries:
                 if entry == existing_entry:
                     existing_entry.references.append(self)
 
             self.entries.append(entry)
-            self.blob.unique_entries.add(entry)
+            self.rom.unique_entries.add(entry)
 
     def verify_checksum(self):
         data = self[0x8:]

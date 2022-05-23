@@ -20,6 +20,8 @@ import math
 import zlib
 import struct
 
+from typing import Set, TypeVar
+
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.backends import default_backend
 
@@ -281,3 +283,11 @@ def fletcher32(s):
 
     checksum = (c1 << 16) | c0
     return struct.pack('<I', checksum)
+
+
+T = TypeVar('T')
+
+
+def sole(set_of_one: Set[T], assert_msg="Set does not contain exactly one element") -> T:
+    assert len(set_of_one) == 1, assert_msg
+    return list(set_of_one)[0]

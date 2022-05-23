@@ -35,6 +35,7 @@ def main():
     parser.add_argument('-h', '--help', action='help', help=SUPPRESS)
     parser.add_argument('-v', '--verbose', help=SUPPRESS, action='store_true')
 
+    parser.add_argument('-r', '--rom-index', help=SUPPRESS, type=int, default=0)
     parser.add_argument('-d', '--directory-index', help=SUPPRESS, type=int)
     parser.add_argument('-e', '--entry-index', help=SUPPRESS, type=int)
     parser.add_argument('-s', '--subfile', help=SUPPRESS)
@@ -65,6 +66,7 @@ def main():
         'Extract one or more PSP firmware entries.',
         '[-d idx [-e idx]] [-n] [-u] [-c] [-k] [-o outfile]',
         '',
+        '-r idx:  specifies rom_index (default: 0)',
         '-d idx:  specifies directory_index (default: all directories)',
         '-e idx:  specifies entry_index (default: all entries)',
         '-n:      skip duplicate entries and extract unique entries only',
@@ -79,6 +81,7 @@ def main():
         'ROM file and update metadata accordingly.',
         '-d idx -e idx -s subfile -o outfile [-p file-stub] [-a pass]',
         '',
+        '-r idx:  specifies rom_index (default: 0)',
         '-d idx:  specifies directory_index',
         '-e idx:  specifies entry_index',
         '-s file: specifies subfile (i.e. the new entry contents)',
@@ -102,7 +105,7 @@ def main():
 
     if args.extract_entry:
         if args.directory_index is not None and args.entry_index is not None:
-            entry = psp.blob.fets[0].directories[args.directory_index].entries[args.entry_index]
+            entry = psp.blob.roms[args.rom_index].directories[args.directory_index].entries[args.entry_index]
 
             if args.decompress:
                 if not entry.compressed:
@@ -120,11 +123,12 @@ def main():
         else:
             if args.entry_index is None:  # if neither directory_index nor entry_index are specified
                 if args.directory_index is not None:
-                    directories = [psp.blob.fets[0].directories[args.directory_index]]
+                    directories = [psp.blob.roms[args.rom_index].directories[args.directory_index]]
                 else:
-                    directories = psp.blob.fets[0].directories
+                    directories = psp.blob.roms[args.rom_index].directories
 
                 if args.no_duplicates is False:
+                    outdir = args.outfile or f'./{psp.filename}_extracted'
                     for dir_index, directory in enumerate(directories):
                         for entry_index, entry in enumerate(directory.entries):
                             if args.decompress and type(entry) is HeaderEntry:
@@ -136,7 +140,6 @@ def main():
                             else:
                                 out_bytes = entry.get_bytes()
 
-                            outdir = args.outfile or f'./{psp.filename}_extracted'
                             outpath = outdir + '/d%.2d_e%.2d_%s' % (dir_index, entry_index, entry.get_readable_type())
                             if type(entry) is HeaderEntry:
                                 outpath += f'_{entry.get_readable_version()}'
@@ -144,8 +147,9 @@ def main():
                             os.makedirs(os.path.dirname(outpath), exist_ok=True)
                             with open(outpath, 'wb') as f:
                                 f.write(out_bytes)
+                    ph.print_info(f"Extracted all entries to {outdir}")
                 else:  # no_duplicates is True
-                    for entry in psp.blob.unique_entries:
+                    for entry in psp.blob.roms[args.rom_index].unique_entries:
                         if args.decompress and type(entry) is HeaderEntry:
                             out_bytes = entry.get_signed_bytes()
                         elif args.decrypt and type(entry) is HeaderEntry:
@@ -169,7 +173,7 @@ def main():
 
     elif args.replace_entry:
         if args.directory_index is not None and args.entry_index is not None and args.outfile is not None:
-            entry = psp.blob.fets[0].directories[args.directory_index].entries[args.entry_index]
+            entry = psp.blob.roms[args.rom_index].directories[args.directory_index].entries[args.entry_index]
 
             # Substituting an entry is actually optional to allow plain re-signs
             if args.subfile is not None:
@@ -195,8 +199,6 @@ def main():
         else:
             parser.print_help(sys.stderr)
     else:
-        if args.verbose:
-            print(psp.blob.agesa_version)
         if args.json:
             psp.ls_json(verbose=args.verbose)
         elif args.key_tree:

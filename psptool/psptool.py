@@ -28,9 +28,9 @@ class PSPTool:
     @classmethod
     def from_file(cls, filename, verbose=False):
         with open(filename, 'rb') as f:
-            rom_bytes = bytearray(f.read())
+            file_bytes = bytearray(f.read())
 
-        pt = PSPTool(rom_bytes, verbose=verbose)
+        pt = PSPTool(file_bytes, verbose=verbose)
         pt.filename = filename
 
         return pt
@@ -57,10 +57,21 @@ class PSPTool:
         sys.stdout.buffer.write(self.blob.get_buffer())
 
     def ls(self, verbose=False):
-        for fet in self.blob.fets:
-            for index, directory in enumerate(fet.directories):
-                t = PrettyTable(['Directory', 'Addr', 'Type', 'Magic', 'Secondary Directory'])
+        for rom_index, rom in enumerate(self.blob.roms):
+            t = PrettyTable(['ROM', 'Addr', 'Size', 'FET', 'AGESA'])
+            t.add_row([
+                rom_index,
+                hex(rom.get_address()),
+                hex(rom.buffer_size),
+                hex(rom.fet.get_address()),
+                rom.agesa_version
+            ])
+            print(t)
+
+            for index, directory in enumerate(rom.directories):
+                t = PrettyTable(['', 'Directory', 'Addr', 'Type', 'Magic', 'Secondary Directory'])
                 t.add_row([
+                    '',
                     index,
                     hex(directory.get_address()),
                     directory.type,
@@ -70,7 +81,7 @@ class PSPTool:
 
                 print(t)
 
-                self.ls_dir(fet, index, verbose=verbose)
+                self.ls_dir(rom, index, verbose=verbose)
                 print('\n')
 
     def ls_dir(self, fet,  directory_index, verbose=False):
@@ -82,7 +93,7 @@ class PSPTool:
         if entries is None:
             entries = sorted(self.blob.unique_entries)
 
-        basic_fields = [' ', 'Entry', 'Address', 'Size', 'Type', 'Magic/ID', 'Version', 'Info']
+        basic_fields = ['', ' ', 'Entry', 'Address', 'Size', 'Type', 'Magic/ID', 'Version', 'Info']
         verbose_fields = ['MD5', 'size_signed', 'size_full', 'size_packed', 'load_addr']
 
         t = PrettyTable(basic_fields + verbose_fields)
@@ -118,6 +129,7 @@ class PSPTool:
 
             all_values = [
                 '',
+                '',
                 index,
                 hex(entry.get_address()),
                 hex(entry.buffer_size),
@@ -149,8 +161,8 @@ class PSPTool:
 
     def ls_json(self, verbose=False):
         data = []
-        for fet in self.blob.fets:
-            for index, directory in enumerate(fet.directories):
+        for rom in self.blob.roms:
+            for index, directory in enumerate(rom.directories):
                 PrettyTable(['Directory', 'Addr', 'Type', 'Magic', 'Secondary Directory'])
                 d = {
                     'directory': index,
@@ -161,7 +173,7 @@ class PSPTool:
                 if directory.secondary_directory_address:
                     d['secondaryAddress'] = directory.secondary_directory_address
 
-                entries = self.ls_dir_dict(fet, index, verbose=verbose)
+                entries = self.ls_dir_dict(rom, index, verbose=verbose)
                 d['entries'] = entries
                 data.append(d)
         print(json.dumps(data))
@@ -173,7 +185,7 @@ class PSPTool:
     def ls_entries_dict(self, entries=None):
         # list all entries of all directories by default (sorted by their address)
         if entries is None:
-            entries = sorted(self.blob.unique_entries)
+            entries = sorted(self.rom.unique_entries)
 
         out = []
         for index, entry in enumerate(entries):

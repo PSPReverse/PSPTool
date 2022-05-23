@@ -99,3 +99,5 @@ dist
 
 *.swp
 venv
+.eggs
+.idea.bak

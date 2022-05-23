@@ -86,11 +86,12 @@ class SignedEntity:
             else:
                 failed_once = True
 
-            if not verified_once:
-                return False
-            if failed_once:
-                raise errors.SignatureInconsistent(self, pubkey)
-            return True
+        if not verified_once:
+            return False
+        # todo: use this in strict mode (fails e.g. for H12SSW9.719)
+        # if failed_once:
+        #     raise errors.SignatureInconsistent(self, pubkey)
+        return True
 
     def verify_with_pubkey(self, pubkey: PublicKey) -> bool:
         return pubkey.verify_blob(self.entry.get_signed_bytes(), self.signature.get_bytes())
@@ -381,8 +382,8 @@ class CertificateTree:
     def from_blob(blob, psptool):
         ct = CertificateTree(psptool)
 
-        for fet in blob.fets:
-            for dr in fet.directories:
+        for rom in blob.roms:
+            for dr in rom.directories:
                 for entry in dr.entries:
                     if type(entry) == PubkeyEntry:
                         ct.add_pubkey_entry(entry)
