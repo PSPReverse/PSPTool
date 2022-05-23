@@ -41,6 +41,9 @@ class NestedBuffer:
         self.parent_buffer = parent_buffer
         self.buffer_size = buffer_size
         self.buffer_offset = buffer_offset
+        if hasattr(parent_buffer, 'buffer_size'):
+            assert self.buffer_offset + self.buffer_size <= parent_buffer.buffer_size, \
+                f'Cannot create child buffer: overflows parent buffer\'s bounds!'
         assert (self.buffer_size <= self.buffer_offset + self.buffer_size), \
             f'sz=0x{self.buffer_size:x},off=0x{self.buffer_offset:x}'
 

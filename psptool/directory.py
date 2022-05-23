@@ -135,13 +135,17 @@ class Directory(NestedBuffer):
             if entry_fields['type'] in BIOS_ENTRY_TYPES:
                 destination = struct.unpack('<Q', entry_bytes[0x10:0x18])[0]
 
-            entry = Entry.from_fields(self, self.parent_buffer,
-                                      entry_fields['type'],
-                                      entry_fields['size'],
-                                      entry_fields['offset'],
-                                      self.rom,
-                                      self.psptool,
-                                      destination=destination)
+            try:
+                entry = Entry.from_fields(self, self.parent_buffer,
+                                          entry_fields['type'],
+                                          entry_fields['size'],
+                                          entry_fields['offset'],
+                                          self.rom,
+                                          self.psptool,
+                                          destination=destination)
+            except:
+                self.psptool.ph.print_warning(f"Entry of {self} at {hex(entry_fields['offset'])} cannot be parsed")
+                continue
 
             for existing_entry in self.rom.unique_entries:
                 if entry == existing_entry:
