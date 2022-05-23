@@ -161,6 +161,7 @@ class PSPTool:
 
     def ls_json(self, verbose=False):
         data = []
+        # todo: add notion of Multi-ROMs
         for rom in self.blob.roms:
             for index, directory in enumerate(rom.directories):
                 PrettyTable(['Directory', 'Addr', 'Type', 'Magic', 'Secondary Directory'])

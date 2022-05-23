@@ -63,9 +63,11 @@ class Fet(NestedBuffer):
             type_ = "PSP"
         elif magic == b'$BHD':
             type_ = "BIOS"
+        elif magic == b'\xff\xff\xff\xff':
+            self.psptool.ph.print_warning(f"Empty FET entry at ROM address {hex(addr)}")
+            return
         else:
-            # TODO: improve handling
-            self.psptool.ph.print_warning(f"Weird PSP Combo directory at {hex(addr)}")
+            self.psptool.ph.print_warning(f"Unknown FET entry with magic {magic} at ROM address {hex(addr)}")
             return
         dir_ = Directory(self.rom, addr, type_, self.psptool)
         self.directories.append(dir_)
@@ -77,25 +79,25 @@ class Fet(NestedBuffer):
     def _parse_entry_table(self):
         entries = self.get_chunks(4, 4)
         for _index, entry in enumerate(entries):
-            addr = int.from_bytes(entry, 'little')
+            rom_addr = int.from_bytes(entry, 'little')
             # TODO: Why is 0xFFFFFFFe a possible value here?
-            if addr in [0x0, 0xFFFFFFFF, 0xFFFFFFFe]:
+            if rom_addr in [0x0, 0xFFFFFFFF, 0xFFFFFFFe]:
                 continue
-            addr &= self.rom.addr_mask
+            rom_addr &= self.rom.addr_mask
             try:
-                dir_magic = self.rom[addr:addr + 4]
+                dir_magic = self.rom[rom_addr:rom_addr + 4]
             except:
-                self.psptool.ph.print_warning(f"FET entry 0x{addr:x} not found or invalid, skipping ...")
+                self.psptool.ph.print_warning(f"FET entry 0x{rom_addr:x} not found or invalid, skipping ...")
                 continue
             if dir_magic == b'2PSP':
-                combo_addresses = self._parse_combo_dir(addr)
-                for addr in combo_addresses:
-                    dir_magic = self.rom[addr:addr + 4]
-                    self._create_directory(addr, dir_magic)
+                combo_addresses = self._parse_combo_dir(rom_addr)
+                for rom_addr in combo_addresses:
+                    dir_magic = self.rom[rom_addr:rom_addr + 4]
+                    self._create_directory(rom_addr, dir_magic)
             elif dir_magic == b'$PSP':
-                self._create_directory(addr, dir_magic)
+                self._create_directory(rom_addr, dir_magic)
             else:
-                self._create_directory(addr, dir_magic)
+                self._create_directory(rom_addr, dir_magic)
                 pass
 
     def _parse_combo_dir(self, dir_addr):
