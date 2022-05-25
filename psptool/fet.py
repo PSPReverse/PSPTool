@@ -67,6 +67,7 @@ class Fet(NestedBuffer):
             self.psptool.ph.print_warning(f"Empty FET entry at ROM address {hex(addr)}")
             return
         else:
+            # todo: implement 2BHD directories
             self.psptool.ph.print_warning(f"Unknown FET entry with magic {magic} at ROM address {hex(addr)}")
             return
         dir_ = Directory(self.rom, addr, type_, self.psptool)

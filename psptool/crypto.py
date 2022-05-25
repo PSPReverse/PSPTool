@@ -25,7 +25,7 @@ from cryptography.hazmat.primitives.asymmetric import padding
 from cryptography.hazmat.primitives import hashes
 from cryptography.exceptions import InvalidSignature
 
-from utils import NestedBuffer
+from .utils import NestedBuffer
 
 
 # Abstract classes
