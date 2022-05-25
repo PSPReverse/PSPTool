@@ -30,10 +30,11 @@ class TestRomFiles(unittest.TestCase):
 
         return self.__class__.cached_pts[filename]
 
-    def test_from_file(self):
+    def test_0_from_file(self):
         for filename in self.fixture_roms():
             with self.subTest(filename):
-                self.pt_from_file(filename)
+                pt = self.pt_from_file(filename)
+                self.assertTrue(len(pt.blob.roms) > 0, "Did not find a single ROM")
 
     def test_to_file(self):
         for filename in self.fixture_roms():
