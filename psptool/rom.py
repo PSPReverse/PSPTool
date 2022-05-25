@@ -7,7 +7,11 @@ from .utils import NestedBuffer, sole
 class Rom(NestedBuffer):
     def __init__(self, parent_blob, rom_size, rom_offset, fet_offset, psptool):
         super().__init__(parent_blob, rom_size, rom_offset)
-        self.addr_mask = 0x00FFFFFF  # todo: depend on rom_size
+
+        # ROMs will be mapped into memory to fit the very end of the 32 bit memory
+        #  -> most ROMs are 16 MB in size, so addresses are starting at 0xFF000000
+        #  -> some ROMs are 8 MB in size, so addresses are starting at 0xFF800000
+        self.addr_mask = rom_size - 1
 
         self.unique_entries = set()
         self.pubkeys = {}

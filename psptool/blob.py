@@ -48,8 +48,10 @@ class Blob(NestedBuffer):
             0x820000,
         ]
 
-        # todo: figure out ROM size (e.g. for 8M images)
         rom_size = 0x1000000
+        if self.buffer_size < rom_size:
+            self.psptool.ph.print_warning("Input  file < 16M, will assume 8M ROM ...")
+            rom_size = 0x800000
 
         # For each FET, we try to create a 16MB ROM starting at `FET - offset`
         for fet_location in self._find_fets():

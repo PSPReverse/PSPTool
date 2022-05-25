@@ -124,12 +124,7 @@ class Directory(NestedBuffer):
             for key, word in zip(self.ENTRY_FIELDS, chunker(entry_bytes, 4)):
                 entry_fields[key] = struct.unpack('<I', word)[0]
 
-            # ROMs will be mapped into memory to fit the very end of the 32 bit memory
-            #  -> most ROMs are 16 MB in size, so addresses are starting at 0xFF000000
-            entry_fields['offset'] &= 0x00FFFFFF
-            #  -> some ROMs are 8 MB in size, so addresses are starting at 0xFF800000
-            # if len(self.blob) == 0x800000:
-            #     entry_fields['offset'] &= 0x7FFFFF
+            entry_fields['offset'] &= self.rom.addr_mask
             destination = None
 
             if entry_fields['type'] in BIOS_ENTRY_TYPES:
