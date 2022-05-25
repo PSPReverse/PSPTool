@@ -114,6 +114,7 @@ class Blob(NestedBuffer):
             yield fet_offset
 
     def _find_inline_pubkeys(self, fp):
+
         """ Try to find a pubkey anywhere in the blob.
         The pubkey is identified by its fingerprint. If found, the pubkey is
         added to the list of pubkeys of the blob """
