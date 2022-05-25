@@ -22,8 +22,7 @@ from .utils import shannon
 from .utils import zlib_decompress, zlib_compress
 from .utils import decrypt
 from .utils import round_to_int
-from .types import KeyId, Signature, ReversedSignature
-from .crypto import PrivateKey
+from .crypto import KeyId, Signature, ReversedSignature, PrivateKey
 
 from enum import Enum
 

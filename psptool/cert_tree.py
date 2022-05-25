@@ -16,8 +16,7 @@
 
 from .entry import HeaderEntry, PubkeyEntry, KeyStoreEntry, KeyStoreKey
 from .utils import NestedBuffer, RangeDict
-from .crypto import PublicKey, PrivateKey, KeyType, PrivateKeyDict
-from .types import KeyId, Signature
+from .crypto import PublicKey, PrivateKey, KeyType, PrivateKeyDict, KeyId, Signature
 
 from . import errors
 

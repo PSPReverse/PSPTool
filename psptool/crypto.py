@@ -14,6 +14,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+from binascii import hexlify
 from os import listdir, mkdir, path
 
 from abc import ABC, abstractmethod
@@ -24,9 +25,10 @@ from cryptography.hazmat.primitives.asymmetric import padding
 from cryptography.hazmat.primitives import hashes
 from cryptography.exceptions import InvalidSignature
 
+from utils import NestedBuffer
+
+
 # Abstract classes
-
-
 class WithSignatureSize(ABC):
 
     # abstract static property
@@ -362,3 +364,47 @@ class Rsa4096PrivateKey(RsaPrivateKey):
 
 rsa4096_key_type = KeyType("rsa4096", Rsa4096PublicKey, Rsa4096PrivateKey)
 
+
+class KeyId(NestedBuffer):
+
+    @property
+    def magic(self) -> str:
+        return hexlify(self.get_bytes(0, 2)).upper().decode('ascii')
+
+    def as_string(self) -> str:
+        return hexlify(self.get_bytes()).upper().decode('ascii')
+
+    def __repr__(self):
+        return f'KeyId({self.as_string()})'
+
+
+class Signature(NestedBuffer):
+    @classmethod
+    def from_nested_buffer(cls, nb):
+        return Signature(nb.parent_buffer, nb.buffer_size, buffer_offset=nb.buffer_offset)
+
+
+class ReversedSignature(Signature):
+    def __getitem__(self, item):
+        if isinstance(item, slice):
+            new_slice = self._offset_slice(item)
+            return self.parent_buffer[new_slice]
+        else:
+            assert (isinstance(item, int))
+            assert item >= 0, "Negative index not supported for ReversedSignature"
+            return self.parent_buffer[self.buffer_offset + self.buffer_size - item - 1]
+
+    def __setitem__(self, key, value):
+        if isinstance(key, slice):
+            new_slice = self._offset_slice(key)
+            self.parent_buffer[new_slice] = value
+        else:
+            assert (isinstance(key, int))
+            self.parent_buffer[self.buffer_offset + self.buffer_size - key - 1] = value
+
+    def _offset_slice(self, item):
+        return slice(
+            self.buffer_offset + self.buffer_size - (item.start or 0) - 1,
+            self.buffer_offset + self.buffer_size - (item.stop or self.buffer_size) - 1,
+            -1
+        )
