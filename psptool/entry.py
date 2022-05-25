@@ -795,6 +795,11 @@ class HeaderEntry(Entry):
             self.signature_len = self.rom_size - 0x100 - body_size
             if self.signature_len < 0:
                 self.signature_len = 0
+
+            # Round to 0x100, 0x200, etc.
+            self.signature_len >>= 8
+            self.signature_len <<= 8
+
             if self.signature_len > 0x200:
 
                 # this is a best-effort guess made for e.g. PSP_FW_TRUSTED_OS~0x2
@@ -803,9 +808,6 @@ class HeaderEntry(Entry):
             if self.signature_len % 0x100 > 0x10:
                 # self.psptool.ph.print_warning(f"Signature size of 0x{self.signature_len:x} seems odd!")
                 pass
-
-            self.signature_len >>= 8
-            self.signature_len <<= 8
 
             if self.signature_len not in {0x100, 0x200}:
                 # self.psptool.ph.print_warning(f"Signature size of 0x{self.signature_len:x} seems odd!")
@@ -931,8 +933,9 @@ class HeaderEntry(Entry):
 
     def get_signed_bytes(self) -> bytes:
         if self.compressed:
-            # TODO: there are some exceptions to this behaviour
-            return self.header.get_bytes() + self.get_decompressed_body()
+            full_decompressed = self.header.get_bytes() + self.get_decompressed_body()
+            # Truncate to actually signed portion
+            return full_decompressed[:self.header_len + self.size_signed]
         elif self.encrypted:
             return self.get_decrypted()[:self.size_signed + self.header_len]
         else:
