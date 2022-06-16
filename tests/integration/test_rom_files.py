@@ -4,9 +4,15 @@ import psptool
 import io
 import contextlib
 
+from psptool import PSPTool
 from psptool.entry import HeaderEntry
 
-rom_fixtures_path = 'tests/integration/fixtures/roms'
+dirname = os.path.dirname(__file__)
+rom_fixtures_path = os.path.join(dirname, 'fixtures/roms')
+
+# todo: add extraction tests
+#  - extract entry and make sure it has the correct size
+#  - only resign the ROM and check that it is parsed with the same output as the original ROM
 
 
 class TestRomFiles(unittest.TestCase):
@@ -21,7 +27,7 @@ class TestRomFiles(unittest.TestCase):
                 filename = os.path.join(subdir, file)
                 yield filename
 
-    def pt_from_file(self, filename):
+    def pt_from_file(self, filename) -> PSPTool:
         if filename not in self.__class__.cached_pts.keys():
             with io.StringIO() as stderr_buf:
                 with contextlib.redirect_stderr(stderr_buf):
@@ -35,6 +41,8 @@ class TestRomFiles(unittest.TestCase):
             with self.subTest(filename):
                 pt = self.pt_from_file(filename)
                 self.assertTrue(len(pt.blob.roms) > 0, "Did not find a single ROM")
+                for rom in pt.blob.roms:
+                    self.assertTrue(len(rom.directories) > 0, "Found ROM with no directories")
 
     def test_to_file(self):
         for filename in self.fixture_roms():
@@ -52,6 +60,7 @@ class TestRomFiles(unittest.TestCase):
                             with contextlib.redirect_stderr(stderr_buf):
                                 pt.ls()
                                 pt.ls(verbose=True)
+                                pt.ls_entries()
                                 pt.ls_json()
 
     def test_extract_basic(self):
