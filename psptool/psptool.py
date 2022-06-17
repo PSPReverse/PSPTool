@@ -111,7 +111,7 @@ class PSPTool:
                     if entry.signed_entity.is_verified():
                         info.append(f'verified({entry.get_readable_signed_by()})')
                 except errors.NoCertifyingKey:
-                    info.append('no_key')
+                    info.append(f'key_missing ({entry.signed_entity.certifying_id.as_string()[:4]})')
                 except errors.SignatureInvalid:
                     info.append(f'invalid_sig({entry.get_readable_signed_by()})')
             if entry.has_sha256_checksum:
