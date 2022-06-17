@@ -91,7 +91,7 @@ class PSPTool:
     def ls_entries(self, entries=None, verbose=False):
         # list all entries of all directories by default (sorted by their address)
         if entries is None:
-            entries = sorted(self.blob.unique_entries)
+            entries = sorted(self.blob.unique_entries())
 
         basic_fields = ['', ' ', 'Entry', 'Address', 'Size', 'Type', 'Magic/ID', 'Version', 'Info']
         verbose_fields = ['MD5', 'size_signed', 'size_full', 'size_packed', 'load_addr']

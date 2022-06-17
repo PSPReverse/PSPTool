@@ -81,7 +81,7 @@ class Blob(NestedBuffer):
         return f'Blob({self.roms=})'
 
     def _construct_range_dict(self):
-        all_entries = self.all_entries()
+        all_entries = self.unique_entries()
 
         # create RangeDict in order to find entries, directories and fets for a given address
         directories = [directory for rom in self.roms for directory in rom.directories]
@@ -102,12 +102,14 @@ class Blob(NestedBuffer):
             }
         })
 
-    def all_entries(self):
+    def unique_entries(self) -> set:
         directories = [directory for rom in self.roms for directory in rom.directories]
         directory_entries = [directory.entries for directory in directories]
         # flatten list of lists
         all_entries = [entry for sublist in directory_entries for entry in sublist]
-        return all_entries
+        # filter duplicates through set
+        unique_entries = set(all_entries)
+        return unique_entries
 
     def _find_fets(self):
         # AA55AA55 is to unspecific, so we require a word of padding before (to be tested)
