@@ -108,7 +108,7 @@ class Entry(NestedBuffer):
 
     }
 
-    KEY_STORE_ENTRY_TYPES = [0x50, 0x51]
+    KEY_STORE_TYPES = [0x50, 0x51]
 
     class Type(Enum):
         NO_HDR_ENTRY = 1
@@ -178,7 +178,7 @@ class Entry(NestedBuffer):
                 )
                 psptool.ph.print_warning(f"{e.__class__.__name__} for {new_entry}")
 
-        elif type_ in Entry.KEY_STORE_ENTRY_TYPES:
+        elif type_ in Entry.KEY_STORE_TYPES:
             # Option 2: it's a KeyStoreEntry
             try:
                 new_entry = KeyStoreEntry(parent_directory, parent_buffer, type_, size, offset, blob, psptool)
@@ -448,8 +448,8 @@ class KeyStoreEntryHeader(NestedBuffer):
         self._unknown_constant_2 = NestedBuffer(self, 0x4, buffer_offset=0x34)
         assert self.unknown_constants == (b'\1\0\0\0', b'\2\0\0\0')
 
-        self._entry_type = NestedBuffer(self, 0x4, buffer_offset=0x7c)
-        assert self.entry_type in Entry.KEY_STORE_ENTRY_TYPES
+        self._keystore_type = NestedBuffer(self, 0x4, buffer_offset=0x7c)
+        assert self.keystore_type in Entry.KEY_STORE_TYPES or self.keystore_type == 0
 
 
         self._sha256_checksum_flag_1 = NestedBuffer(self, 0x4, buffer_offset=0x4c)
@@ -489,8 +489,8 @@ class KeyStoreEntryHeader(NestedBuffer):
         return int.from_bytes(self._packed_size.get_bytes(), 'little')
 
     @property
-    def entry_type(self) -> int:
-        return int.from_bytes(self._entry_type.get_bytes(), 'little')
+    def keystore_type(self) -> int:
+        return int.from_bytes(self._keystore_type.get_bytes(), 'little')
 
     @property
     def signature_size(self) -> int:
@@ -513,7 +513,7 @@ class KeyStoreEntryHeader(NestedBuffer):
 
     @property
     def has_sha256_checksum(self) -> bool:
-        assert self.sha256_checksum_flag_1 == self.sha256_checksum_flag_2
+        # assert self.sha256_checksum_flag_1 == self.sha256_checksum_flag_2
         assert self.sha256_checksum_flag_1 in {0, 1}
         return self.sha256_checksum_flag_1 == 1
 

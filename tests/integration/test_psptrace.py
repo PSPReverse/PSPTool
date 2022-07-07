@@ -23,6 +23,7 @@ class TestPSPTrace(unittest.TestCase):
                 romfile = os.path.join(rom_fixtures_path, file[:-3] + 'rom')
                 assert os.path.exists(romfile), \
                     "Expecting for each .txt/.csv file in traces a .rom file with the same name"
+                print(f"{tracefile=}, {romfile=}")
                 yield tracefile, romfile
 
     def test_basic(self):
@@ -35,8 +36,10 @@ class TestPSPTrace(unittest.TestCase):
             with self.subTest(f"{tracefile=} {romfile=}"):
                 with io.StringIO() as stdout_buf:
                     with contextlib.redirect_stdout(stdout_buf):
-                        pt = psptrace.PSPTrace(tracefile, romfile, limit_rows=100)
-                        pt.display_all()
+                        with io.StringIO() as stderr_buf:
+                            with contextlib.redirect_stderr(stderr_buf):
+                                pt = psptrace.PSPTrace(tracefile, romfile, limit_rows=100)
+                                pt.display_all()
                     stdout = stdout_buf.getvalue()
                     self.assertTrue(
                         'Parsed and stored a database of' in stdout,

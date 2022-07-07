@@ -32,6 +32,7 @@ class TestRomFiles(unittest.TestCase):
             with io.StringIO() as stderr_buf:
                 with contextlib.redirect_stderr(stderr_buf):
                     self.cached_pts[filename] = psptool.PSPTool.from_file(filename)
+                    print(f"{filename=} ...")
                 warnings = stderr_buf.getvalue().split('\n')
 
         return self.__class__.cached_pts[filename]
