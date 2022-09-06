@@ -67,7 +67,6 @@ class Fet(NestedBuffer):
             self.psptool.ph.print_warning(f"Empty FET entry at ROM address {hex(addr)}")
             return
         else:
-            # todo: implement 2BHD directories
             self.psptool.ph.print_warning(f"Unknown FET entry with magic {magic} at ROM address {hex(addr)}")
             return
         dir_ = Directory(self.rom, addr, type_, self.psptool)
@@ -90,7 +89,7 @@ class Fet(NestedBuffer):
             except:
                 self.psptool.ph.print_warning(f"FET entry 0x{rom_addr:x} not found or invalid, skipping ...")
                 continue
-            if dir_magic == b'2PSP':
+            if dir_magic == b'2PSP' or dir_magic == b'2BHD':
                 combo_addresses = self._parse_combo_dir(rom_addr)
                 for rom_addr in combo_addresses:
                     dir_magic = self.rom[rom_addr:rom_addr + 4]
