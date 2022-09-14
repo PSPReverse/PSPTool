@@ -49,7 +49,7 @@ class Directory(NestedBuffer):
     _ENTRY_TYPES_SECONDARY_DIR = [0x40, 0x70]
     _ENTRY_TYPES_PUBKEY = [0x0, 0x9, 0xa, 0x5, 0xd]
 
-    def __init__(self, parent_rom, rom_address: int, type_: str, psptool):
+    def __init__(self, parent_rom, rom_address: int, type_: str, psptool, zen_generation='unknown'):
         self.rom = parent_rom
 
         # The offset of this directory as specified in the FET
@@ -58,6 +58,8 @@ class Directory(NestedBuffer):
         self.psptool = psptool
         self.checksum = None
         self._count = None
+
+        self.zen_generation = zen_generation
 
         # a directory must parse itself before it knows its size and can initialize its buffer
         self._parse_header()
