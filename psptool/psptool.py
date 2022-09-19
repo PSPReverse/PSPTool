@@ -69,7 +69,7 @@ class PSPTool:
             print(t)
 
             for index, directory in enumerate(rom.directories):
-                t = PrettyTable(['', 'Directory', 'Addr', 'Type', 'Zen_Gen', 'Magic', 'Secondary Directory'])
+                t = PrettyTable(['', 'Directory', 'Addr', 'Type', 'Generation', 'Magic', 'Secondary Directory'])
                 t.add_row([
                     '',
                     index,
