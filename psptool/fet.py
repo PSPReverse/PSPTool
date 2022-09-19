@@ -20,6 +20,11 @@ from .directory import Directory
 from typing import List
 
 
+ZEN_GENERATION_IDS = {'Zen 1': [b'\x00\x09\xBC', b'\x00\x0A\xBC'],
+                      'Zen 2': [b'\x05\x0B\xBC', b'\x01\x0A\xBC'],
+                      'Zen 3': [b'\x01\x0C\xBC', b'\x00\x0C\xBC']}
+
+
 class EmptyFet(Exception):
     pass
 
@@ -57,7 +62,7 @@ class Fet(NestedBuffer):
             raise EmptyFet()
         return size
 
-    def _create_directory(self, addr, magic):
+    def _create_directory(self, addr, magic, zen_generation):
         # todo: move this responsibility to the parent ROM
         if magic == b'$PSP':
             type_ = "PSP"
@@ -69,11 +74,11 @@ class Fet(NestedBuffer):
         else:
             self.psptool.ph.print_warning(f"Unknown FET entry with magic {magic} at ROM address {hex(addr)}")
             return
-        dir_ = Directory(self.rom, addr, type_, self.psptool)
+        dir_ = Directory(self.rom, addr, type_, self.psptool, zen_generation)
         self.directories.append(dir_)
         if dir_.secondary_directory_address is not None:
             self.directories.append(
-                Directory(self.rom, dir_.secondary_directory_address, 'secondary', self.psptool)
+                Directory(self.rom, dir_.secondary_directory_address, 'secondary', self.psptool, zen_generation)
             )
 
     def _parse_entry_table(self):
@@ -90,18 +95,20 @@ class Fet(NestedBuffer):
                 self.psptool.ph.print_warning(f"FET entry 0x{rom_addr:x} not found or invalid, skipping ...")
                 continue
             if dir_magic == b'2PSP' or dir_magic == b'2BHD':
-                combo_addresses = self._parse_combo_dir(rom_addr)
-                for rom_addr in combo_addresses:
-                    dir_magic = self.rom[rom_addr:rom_addr + 4]
-                    self._create_directory(rom_addr, dir_magic)
+                combo_results = self._parse_combo_dir(rom_addr)
+                for result in combo_results:
+                    combo_address = result[0]
+                    combo_zen_gen = result[1]
+                    dir_magic = self.rom[combo_address:combo_address + 4]
+                    self._create_directory(combo_address, dir_magic, combo_zen_gen)
             elif dir_magic == b'$PSP':
-                self._create_directory(rom_addr, dir_magic)
+                self._create_directory(rom_addr, dir_magic, zen_generation='unknown')
             else:
-                self._create_directory(rom_addr, dir_magic)
+                self._create_directory(rom_addr, dir_magic, zen_generation='unknown')
                 pass
 
     def _parse_combo_dir(self, dir_addr):
-        addresses = []
+        results = []
         no_of_entries = int.from_bytes(self.rom[dir_addr + 8: dir_addr + 0xc],
                                     'little')
         combo_dir = self.rom[dir_addr: dir_addr + 16 * (no_of_entries + 2)]
@@ -117,6 +124,12 @@ class Fet(NestedBuffer):
                 continue
             entry_addr &= self.rom.addr_mask
             # entry_addr += self.blob_offset
-            addresses.append(entry_addr)
+            zen_generation_id = combo_dir[i*16+5:i*16+8]
+            zen_generation = 'unknown'
+            for possible_zen_generation in ZEN_GENERATION_IDS:
+                if zen_generation_id in ZEN_GENERATION_IDS[possible_zen_generation]:
+                    zen_generation = possible_zen_generation
 
-        return addresses
+            results.append((entry_addr, zen_generation))
+
+        return results
