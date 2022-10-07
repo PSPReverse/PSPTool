@@ -15,7 +15,6 @@ jobs:
         with:
           submodules: recursive
           ssh-key: ${{ secrets.PSPTOOL_FIXTURES_NEW_PRIVATE_KEY }}
-          lfs: true
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v3
         with:
