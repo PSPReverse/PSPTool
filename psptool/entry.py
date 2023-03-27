@@ -649,7 +649,7 @@ class PubkeyEntry(Entry):
 
         # misc info
         self._version = NestedBuffer(self, 4)
-        if self.version != 1:
+        if self.version not in {1, 2}:
             raise UnknownPubkeyEntryVersion
         self._key_usage = NestedBuffer(self, 4, 0x24)
 
