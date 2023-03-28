@@ -187,7 +187,7 @@ def main():
             if args.privkeystub:
                 privkeys = PrivateKeyDict.read_from_files(args.privkeystub, args.privkeypass)
 
-            if 'signed_entity' in entry and entry.signed_entity:
+            if hasattr(entry, 'signed_entity') and entry.signed_entity:
                 entry.signed_entity.resign_and_replace(privkeys=privkeys, recursive=True)
             else:
                 ph.print_warning("Did not resign anything since target entry is not signed")
