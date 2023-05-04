@@ -75,6 +75,9 @@ class Blob(NestedBuffer):
             if not fet_parsed:
                 self.psptool.ph.print_warning(f"Skipping FET at {hex(fet_location)} due to unknown ROM alignment")
 
+        if len(self.roms) == 0:
+            self.psptool.ph.print_warning("Could not find any Firmware Entry Table!")
+
         self._construct_range_dict()
 
     def __repr__(self):
