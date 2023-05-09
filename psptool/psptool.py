@@ -17,7 +17,7 @@
 from prettytable import PrettyTable
 import sys, json
 
-from .entry import Entry, HeaderEntry
+from .entry import Entry, HeaderEntry, PubkeyEntry
 from .blob import Blob
 from .utils import PrintHelper
 from .cert_tree import CertificateTree
@@ -111,6 +111,8 @@ class PSPTool:
                 try:
                     if entry.signed_entity.is_verified():
                         info.append(f'verified({entry.get_readable_signed_by()})')
+                    else:
+                        info.append(f'veri-failed({entry.get_readable_signed_by()})')
                 except errors.NoCertifyingKey:
                     info.append(f'key_missing({entry.signed_entity.certifying_id.as_string()[:4]})')
                 except errors.SignatureInvalid:
@@ -127,6 +129,10 @@ class PSPTool:
             if type(entry) == HeaderEntry and entry.inline_keys:
                 inline_keys = ', '.join(map(lambda k: k.get_readable_magic(), entry.inline_keys))
                 info.append(f'inline_keys({inline_keys})')
+            if type(entry) == PubkeyEntry:
+                info.append(entry.get_readable_key_usage())
+                if entry.get_readable_security_features():
+                    info.append(entry.get_readable_security_features())
 
             all_values = [
                 '',

@@ -106,7 +106,8 @@ class SignedEntity:
                 print(f'        Need to rehash')
                 self.entry.update_sha256()
                 print(f'        Done')
-        assert self.signature.buffer_size == privkey.signature_size
+        assert self.signature.buffer_size == privkey.signature_size, \
+            f"{self.signature.buffer_size=}, {privkey.signature_size=}"
         signature = privkey.sign_blob(self.entry.get_signed_bytes())
         assert len(signature) == self.signature.buffer_size, f'Could not resign {self} with {privkey}: ' \
                                                              f'The new signature has the wrong length ' \
