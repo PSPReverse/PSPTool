@@ -868,15 +868,11 @@ class HeaderEntry(Entry):
         if self.compressed:
             self.zlib_size = self.size_signed
 
-        #if self.signed:
-        self.signature = NestedBuffer(self, self.signature_len, self.buffer_size - self.signature_len)
+        if self.signed:
+            self.signature = NestedBuffer(self, self.signature_len, self.buffer_size - self.signature_len)
 
         self.body = NestedBuffer(self, len(self) - self.header_len, self.header_len)
 
-        #self.buffer_size += 0x10B
-        self._signed.set_bytes(0, 4, b'\x01\x00\x00\x00')
-        self.signature.buffer_offset = 0x372da7 - 0x34fd00
-        self.body.buffer_size = self.signature.get_address() - self.body.get_address()
         self.is_legacy = True
 
     def _parse_hdr(self):
