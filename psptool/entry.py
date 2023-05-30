@@ -890,14 +890,14 @@ class HeaderEntry(Entry):
         return self._sha256_checksum_flag_2 == 1
 
     def verify_sha256(self, print_warning=True) -> bool:
-        if self._sha256_checksum.get_bytes() == sha256(self.get_decompressed_body()).digest():
+        if self._sha256_checksum.get_bytes() == sha256(self.get_decrypted_decompressed_body()).digest():
             return True
         if print_warning:
             self.psptool.ph.print_warning(f"Could not verify sha256 checksum for {self}")
         return False
 
     def update_sha256(self):
-        self._sha256_checksum[:] = sha256(self.get_decompressed_body()).digest()
+        self._sha256_checksum[:] = sha256(self.get_decrypted_decompressed_body()).digest()
         self.verify_sha256()
 
     def get_readable_version(self):
@@ -932,27 +932,28 @@ class HeaderEntry(Entry):
         return str(self.signature_fingerprint, encoding='ascii').upper()[:4]
 
     def get_signed_bytes(self) -> bytes:
-        if self.compressed:
-            full_decompressed = self.header.get_bytes() + self.get_decompressed_body()
-            # Truncate to actually signed portion
-            return full_decompressed[:self.header_len + self.size_signed]
-        elif self.encrypted:
-            return self.get_decrypted()[:self.size_signed + self.header_len]
-        else:
-            return self.get_bytes()[:self.size_signed + self.header_len]
+        entry_bytes = self.header.get_bytes() + self.get_decrypted_decompressed_body()
+        return entry_bytes[:self.header_len + self.size_signed]
 
-    def get_decompressed_body(self) -> bytes:
-        if not self.compressed:
-            return self.body.get_bytes()
+    def get_decrypted_decompressed_body(self) -> bytes:
+        if self.encrypted:
+            output = self.get_decrypted_body()
         else:
+            output = self.body.get_bytes()
+        if self.compressed:
             try:
-                return zlib_decompress(self.body.get_bytes()[:self.zlib_size])
+                return zlib_decompress(output[:self.zlib_size])
             except:
                 self.psptool.ph.print_warning(f"ZLIB decompression failed on entry {self.get_readable_type()}")
-                return self.body.get_bytes()
+        return output
 
-    def get_decrypted(self) -> bytes:
-        return self.header.get_bytes() + self.get_decrypted_body()
+    def to_decrypted_entry_bytes(self) -> bytes:
+        """Returns the bytes of the same entry, just with the encryption removed"""
+        header = bytearray(self.header.get_bytes())
+        header[0x18:0x1c] = bytes(4)
+        header[0x20:0x30] = bytes(0x10)
+        signature = self.signature.get_bytes() if self.signed else b''
+        return bytes(header) + self.get_decrypted_body() + signature
 
     def get_decrypted_body(self) -> bytes:
         if not self.encrypted:

@@ -114,7 +114,7 @@ def main():
             elif args.decrypt:
                 if not entry.encrypted:
                     ph.print_error_and_exit(f'Entry is not encrypted {entry.get_readable_type()}')
-                output = entry.get_decrypted()
+                output = entry.to_decrypted_entry_bytes()
             elif args.pem_key:
                 output = entry.get_pem_encoded()
             else:
