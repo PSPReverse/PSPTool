@@ -116,6 +116,8 @@ class SignedEntity:
     def resign_and_replace(self, privkeys: PrivateKeyDict = None, recursive: bool = False):
         # this resigns self (multiple times!)
         for pk in self.certifying_keys:
+            if pk in self.contained_keys:
+                continue # TODO hotfix
             pk.replace_and_resign(privkeys, recursive=recursive)
 
 
@@ -227,12 +229,12 @@ class PublicKeyEntity:
         privkey = privkeys[self.key_type.name]
         assert self.key_type.signature_size == privkey.signature_size
 
+        # replace self
+        self.replace_only(privkey.get_public_key())
+
         # resign children
         for se in self.certified_entities:
             se.resign_only(privkey)
-
-        # replace self
-        self.replace_only(privkey.get_public_key())
 
         # check crypto
         for se in self.certified_entities:
