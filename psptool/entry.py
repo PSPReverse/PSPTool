@@ -65,7 +65,11 @@ class Entry(NestedBuffer):
         0x22: 'TOKEN_UNLOCK',
         0x24: 'SEC_GASKET',
         0x25: 'MP2_FW',
+        0x26: 'MP2_FW_2',
+        0x27: 'USER_MODE_UNIT_TEST',
         0x28: 'DRIVER_ENTRIES',
+        0x29: 'KVM_IMAGE',
+        0x2A: 'MP5_FW',
         0x2D: 'S0I3_DRIVER',
         0x30: 'ABL0',
         0x31: 'ABL1',
@@ -75,6 +79,8 @@ class Entry(NestedBuffer):
         0x35: 'ABL5',
         0x36: 'ABL6',
         0x37: 'ABL7',
+        0x38: 'SEV_DATA',
+        0x39: 'SEV_CODE',
         0x3A: 'FW_PSP_WHITELIST',
         # 0x40: 'FW_L2_PTR',
         0x41: 'FW_IMC',
@@ -84,24 +90,31 @@ class Entry(NestedBuffer):
         0x46: 'ANOTHER_FET',
         0x50: 'KEY_DATABASE',
         0x5f: 'FW_PSP_SMUSCS',
-        0x60: 'FW_IMC',
-        0x61: 'FW_GEC',
+        0x60: 'APCB',
+        0x61: 'APOB',
         0x62: 'FW_XHCI',
-        0x63: 'FW_INVALID',
+        0x63: 'APOB_NV_COPY',
+        0x64: 'PMU_CODE',
+        0x65: 'PMU_DATA',
+        0x66: 'MICROCODE_PATCH',
+        0x67: 'CORE_MCE_DATA',
+        0x68: 'APCB_COPY',
+        0x69: 'EARLY_VGA_IMAGE',
+        0x6A: 'MP2_FW_CFG',
+        0x80: 'OEM_System_Trusted_Application',
+        0x81: 'OEM_System_TA_Signing_key',
         0x108: 'PSP_SMU_FN_FIRMWARE',
         0x118: 'PSP_SMU_FN_FIRMWARE2',
 
         # Entry types named by us
         #   Custom names are denoted by a leading '!'
         0x14: '!PSP_MCLF_TRUSTLETS',  # very similiar to ~PspTrustlets.bin~ in coreboot blobs
-        0x38: '!PSP_ENCRYPTED_NV_DATA',
         0x40: '!PL2_SECONDARY_DIRECTORY',
         0x43: '!KEY_UNKNOWN_1',
         0x4e: '!KEY_UNKNOWN_2',
         0x70: '!BL2_SECONDARY_DIRECTORY',
         0x15f: '!FW_PSP_SMUSCS_2',  # seems to be a secondary FW_PSP_SMUSCS (see above)
         0x112: '!SMU_OFF_CHIP_FW_3',  # seems to tbe a tertiary SMU image (see above)
-        0x39: '!SEV_APP',
         0x10062: '!UEFI-IMAGE',
         0x30062: '!UEFI-IMAGE',
         0xdead: '!KEY_NOT_IN_DIR'
@@ -657,6 +670,9 @@ class PubkeyEntry(Entry):
         self.key_id = KeyId(self, 0x10, 0x4)
         self.certifying_id = KeyId(self, 0x10, 0x14)
 
+        # security features
+        self._security_features = NestedBuffer(self, 2, 0x2A)
+
         # crypto material
         self._pubexp_bits = NestedBuffer(self, 4, 0x38)
         self._modulus_bits = NestedBuffer(self, 4, 0x3c)
@@ -716,6 +732,10 @@ class PubkeyEntry(Entry):
     def modulus(self) -> int:
         return int.from_bytes(self._modulus.get_bytes(), 'little')
 
+    @property
+    def security_features(self) -> int:
+        return int.from_bytes(self._security_features.get_bytes(), 'little')
+
     def get_signed_bytes(self):
         return self.get_bytes(0, self.buffer_size - self.signature_size)
 
@@ -729,6 +749,26 @@ class PubkeyEntry(Entry):
     def get_readable_version(self):
         return str(self.version)
 
+    def get_readable_key_usage(self):
+        if self.key_usage == 0:
+            return 'AMD_CODE_SIGN'
+        if self.key_usage == 1:
+            return 'BIOS_CODE_SIGN'
+        if self.key_usage == 2:
+            return 'AMD_AND_BIOS_CODE_SIGN'
+        if self.key_usage == 8:
+            return 'PLATFORM_SECURE_BOOT'
+        return f'unknown_key_usage({self.key_usage})'
+
+    def get_readable_security_features(self):
+        features = []
+        if self.security_features & 0b001:
+            features.append('DISABLE_BIOS_KEY_ANTI_ROLLBACK')
+        if self.security_features & 0b010:
+            features.append('DISABLE_AMD_BIOS_KEY_USE')
+        if self.security_features & 0b100:
+            features.append('DISABLE_SECURE_DEBUG_UNLOCK')
+        return ', '.join(features)
 
 class HeaderEntry(Entry):
 
@@ -929,7 +969,7 @@ class HeaderEntry(Entry):
         return readable_magic
 
     def get_readable_signed_by(self):
-        return str(self.signature_fingerprint, encoding='ascii').upper()[:4]
+        return self.signed_entity.certifying_id.magic
 
     def get_signed_bytes(self) -> bytes:
         entry_bytes = self.header.get_bytes() + self.get_decrypted_decompressed_body()
