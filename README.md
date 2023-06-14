@@ -7,6 +7,8 @@ It is based on reverse-engineering efforts of AMD's **proprietary filesystem** u
 PSPTool favourably works with UEFI images as obtained through BIOS updates. If these updates are only available through Windows executables, tools like [innoextract](https://github.com/dscharrer/innoextract) can help.
 
 PSPTool was developed at TU Berlin in context of the following research:
+- 2023, talk: [Jailbreaking an Electric Vehicle in 2023 or What It Means to Hotwire Tesla's x86-Based Seat Heater](https://www.blackhat.com/us-23/briefings/schedule/#jailbreaking-an-electric-vehicle-in--or-what-it-means-to-hotwire-teslas-x-based-seat-heater-33049)
+- 2023, paper: [faulTPM: Exposing AMD fTPMs' Deepest Secrets](https://arxiv.org/abs/2304.14717)
 - 2021, paper: [One Glitch to Rule Them All: Fault Injection Attacks Against AMD's Secure Encrypted Virtualization](https://arxiv.org/abs/2108.04575)
 - 2020, talk: [All You Ever Wanted to Know about the AMD Platform Security Processor and were Afraid to Emulate](https://youtu.be/KR8bPLj4nKE)
 - 2019, talk: [Uncover, Understand, Own - Regaining Control Over Your AMD CPU](https://media.ccc.de/v/36c3-10942-uncover_understand_own_-_regaining_control_over_your_amd_cpu)
@@ -50,7 +52,7 @@ $ psptool Lenovo_Thinkpad_T495_r12uj35wd.iso
 
 <details>
   <summary>Click to expand output</summary>
-  
+
   ```
 +-----+----------+-----------+----------+--------------------------------+
 | ROM |   Addr   |    Size   |   FET    |             AGESA              |
