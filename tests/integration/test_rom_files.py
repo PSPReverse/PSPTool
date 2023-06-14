@@ -89,8 +89,7 @@ class TestRomFiles(unittest.TestCase):
                             if isinstance(entry, HeaderEntry):
                                 with io.StringIO() as stderr_buf:
                                     with contextlib.redirect_stderr(stderr_buf):
-                                        out_decompressed = entry.get_decompressed_body()
-                                        out_decrypted = entry.get_decrypted()
+                                        out_decrypted = entry.get_decrypted_decompressed_body()
                                     # Check that there were no warnings
                                     self.assertEqual(stderr_buf.getvalue(), "")
 
