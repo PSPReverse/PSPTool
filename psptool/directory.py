@@ -126,6 +126,9 @@ class Directory(NestedBuffer):
             for key, word in zip(self.ENTRY_FIELDS, chunker(entry_bytes, 4)):
                 entry_fields[key] = struct.unpack('<I', word)[0]
 
+            entry_fields['type_flags'] = entry_fields['type'] >> 8
+            entry_fields['type'] = entry_fields['type'] & 0xFFFF
+
             entry_fields['offset'] &= self.rom.addr_mask
             destination = None
 
@@ -135,6 +138,7 @@ class Directory(NestedBuffer):
             try:
                 entry = Entry.from_fields(self, self.parent_buffer,
                                           entry_fields['type'],
+                                          entry_fields['type_flags'],
                                           entry_fields['size'],
                                           entry_fields['offset'],
                                           self.rom,

@@ -115,8 +115,6 @@ class Entry(NestedBuffer):
         0x70: '!BL2_SECONDARY_DIRECTORY',
         0x15f: '!FW_PSP_SMUSCS_2',  # seems to be a secondary FW_PSP_SMUSCS (see above)
         0x112: '!SMU_OFF_CHIP_FW_3',  # seems to tbe a tertiary SMU image (see above)
-        0x10062: '!UEFI-IMAGE',
-        0x30062: '!UEFI-IMAGE',
         0xdead: '!KEY_NOT_IN_DIR'
 
     }
@@ -135,19 +133,15 @@ class Entry(NestedBuffer):
         pass
 
     @classmethod
-    def from_fields(cls, parent_directory, parent_buffer, type_, size, offset, blob, psptool, destination: int = None):
+    def from_fields(cls, parent_directory, parent_buffer, type_, type_flags, size, offset, blob, psptool, destination: int = None):
         # Try to parse these ID's as a key entry
         # todo: consolidate these constants with Directory._ENTRY_TYPES_PUBKEY
         PUBKEY_ENTRY_TYPES = [0x0, 0x9, 0xa, 0x5, 0xd, 0x43, 0x4e, 0xdead]
 
         # Types known to have no PSP HDR
         # TODO: Find a better way to identify those entries
-        NO_HDR_ENTRY_TYPES = [0x4, 0xb, 0x21, 0x40, 0x70, 0x30062, 0x6, 0x61, 0x60,
-                              0x68, 0x100060, 0x100068, 0x5f, 0x15f, 0x1a, 0x22, 0x63,
-                              0x67, 0x66, 0x100066, 0x200066, 0x300066, 0x10062,
-                              0x400066, 0x500066, 0x800068, 0x61, 0x200060, 0x300060,
-                              0x300068, 0x400068, 0x500068, 0x400060, 0x500060, 0x200068,
-                              0x7, 0x38, 0x46, 0x54, 0x600060, 0x700060, 0x600068, 0x700068]
+        NO_HDR_ENTRY_TYPES = [0x4, 0xb, 0x21, 0x40, 0x70, 0x6, 0x61, 0x60, 0x68, 0x5f, 0x15f, 0x1a, 0x22, 0x63, 0x67,
+                              0x66, 0x62, 0x61, 0x7, 0x38, 0x46, 0x54]
 
         NO_SIZE_ENTRY_TYPES = [0xb]
 
@@ -165,6 +159,7 @@ class Entry(NestedBuffer):
                     parent_directory,
                     parent_buffer,
                     type_,
+                    type_flags,
                     size,
                     offset,
                     blob,
@@ -177,12 +172,13 @@ class Entry(NestedBuffer):
         elif type_ in PUBKEY_ENTRY_TYPES:
             # Option 2: it's a PubkeyEntry
             try:
-                new_entry = PubkeyEntry(parent_directory, parent_buffer, type_, size, offset, blob, psptool)
+                new_entry = PubkeyEntry(parent_directory, parent_buffer, type_, type_flags, size, offset, blob, psptool)
             except Exception as e:
                 new_entry = Entry(
                     parent_directory,
                     parent_buffer,
                     type_,
+                    type_flags,
                     size,
                     offset,
                     blob,
@@ -194,12 +190,13 @@ class Entry(NestedBuffer):
         elif type_ in Entry.KEY_STORE_TYPES:
             # Option 2: it's a KeyStoreEntry
             try:
-                new_entry = KeyStoreEntry(parent_directory, parent_buffer, type_, size, offset, blob, psptool)
+                new_entry = KeyStoreEntry(parent_directory, parent_buffer, type_, type_flags, size, offset, blob, psptool)
             except:
                 new_entry = Entry(
                     parent_directory,
                     parent_buffer,
                     type_,
+                    type_flags,
                     size,
                     offset,
                     blob,
@@ -213,7 +210,7 @@ class Entry(NestedBuffer):
                 # If the size in the directory is zero, set the size to hdr len
                 size = HeaderEntry.HEADER_LEN
             try:
-                new_entry = HeaderEntry(parent_directory, parent_buffer, type_, size, offset, blob, psptool)
+                new_entry = HeaderEntry(parent_directory, parent_buffer, type_, type_flags, size, offset, blob, psptool)
                 if size == 0:
                     psptool.ph.print_warning(f"Entry with zero size. Type: {type_}. Dir: 0x{offset:x}")
             except:
@@ -221,6 +218,7 @@ class Entry(NestedBuffer):
                     parent_directory,
                     parent_buffer,
                     type_,
+                    type_flags,
                     size,
                     offset,
                     blob,
@@ -282,7 +280,7 @@ class Entry(NestedBuffer):
                 # Set zlib_size
                 blob[0x54:0x58] = zlib_size.to_bytes(4, 'little')
 
-            entry = HeaderEntry(None, blob, id_, total_size, 0x0, blob, psptool)
+            entry = HeaderEntry(None, blob, id_, None, total_size, 0x0, blob, psptool)
 
             if signed:
                 entry.signature[:] = private_key.sign(entry.get_signed_bytes())
@@ -291,7 +289,7 @@ class Entry(NestedBuffer):
         else:
             raise Entry.TypeError()
 
-    def __init__(self, parent_directory, parent_buffer, type_, buffer_size, buffer_offset: int, blob, psptool,
+    def __init__(self, parent_directory, parent_buffer, type_, type_flags, buffer_size, buffer_offset: int, blob, psptool,
                  destination: int = None):
         super().__init__(parent_buffer, buffer_size, buffer_offset=buffer_offset)
 
@@ -299,6 +297,7 @@ class Entry(NestedBuffer):
         self.blob = blob
         self.psptool = psptool
         self.type = type_
+        self.type_flags = type_flags
         self.destination = destination
         # todo: deduplicate Entry objects pointing to the same address (in `from_fields`?)
         self.references = [parent_directory] if parent_directory is not None else []

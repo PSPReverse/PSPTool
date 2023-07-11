@@ -95,7 +95,7 @@ class PSPTool:
             entries = sorted(self.blob.unique_entries())
 
         basic_fields = ['', ' ', 'Entry', 'Address', 'Size', 'Type', 'Magic/ID', 'Version', 'Info']
-        verbose_fields = ['MD5', 'size_signed', 'size_full', 'size_packed', 'load_addr']
+        verbose_fields = ['type_flags', 'MD5', 'size_signed', 'size_full', 'size_packed', 'load_addr']
 
         t = PrettyTable(basic_fields + verbose_fields)
         t.align = 'r'
@@ -144,6 +144,7 @@ class PSPTool:
                 entry.get_readable_magic(),
                 entry.get_readable_version(),
                 ', '.join(info),
+                hex(entry.type_flags),
                 entry.md5()[:4].upper()
             ]
 
