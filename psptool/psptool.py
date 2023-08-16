@@ -77,7 +77,7 @@ class PSPTool:
                     directory.type,
                     directory.zen_generation,
                     directory.magic.decode('utf-8', 'backslashreplace'),
-                    hex(directory.secondary_directory_address) if directory.secondary_directory_address else '--'
+                    ', '.join([hex(sda) for sda in directory.secondary_directory_addresses])
                 ])
 
                 print(t)

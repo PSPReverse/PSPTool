@@ -76,10 +76,17 @@ class Fet(NestedBuffer):
             return
         dir_ = Directory(self.rom, addr, type_, self.psptool, zen_generation)
         self.directories.append(dir_)
-        if dir_.secondary_directory_address is not None:
-            self.directories.append(
-                Directory(self.rom, dir_.secondary_directory_address, 'secondary', self.psptool, zen_generation)
-            )
+        for secondary_directory_address in dir_.secondary_directory_addresses:
+            secondary_directory_magic = self.rom.get_bytes(secondary_directory_address, 4)
+            if secondary_directory_magic in [b'*\rY/', b'j\x8d+1']:
+                weird_new_directory_body = self.rom.get_bytes(secondary_directory_address+16, 8)
+                self.directories.append(
+                    Directory(self.rom, int.from_bytes(weird_new_directory_body[:4], 'little'), 'secondary', self.psptool)
+                )
+            else:
+                self.directories.append(
+                    Directory(self.rom, secondary_directory_address, 'secondary', self.psptool, zen_generation)
+                )
 
     def _parse_entry_table(self):
         entries = self.get_chunks(4, 4)
@@ -109,8 +116,7 @@ class Fet(NestedBuffer):
 
     def _parse_combo_dir(self, dir_addr):
         results = []
-        no_of_entries = int.from_bytes(self.rom[dir_addr + 8: dir_addr + 0xc],
-                                    'little')
+        no_of_entries = int.from_bytes(self.rom[dir_addr + 8: dir_addr + 0xc], 'little')
         combo_dir = self.rom[dir_addr: dir_addr + 16 * (no_of_entries + 2)]
 
         # Combo dir entries seem to begin at offset 0x20, make sure we don't

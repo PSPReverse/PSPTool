@@ -36,17 +36,21 @@ class Directory(NestedBuffer):
         b'$PSP': 4 * 4,
         b'$PL2': 4 * 4,
         b'$BHD': 4 * 4,
-        b'$BL2': 4 * 4
+        b'$BL2': 4 * 4,
+        b'*\rY/': 2 * 4,
+        b'j\x8d+1': 2 * 4,
     }
 
     _ENTRY_SIZES = {
         b'$PSP': 4 * 4,
         b'$PL2': 4 * 4,
         b'$BHD': 4 * 6,
-        b'$BL2': 4 * 6
+        b'$BL2': 4 * 6,
+        b'*\rY/': 2 * 4,
+        b'j\x8d+1': 2 * 4,
     }
 
-    _ENTRY_TYPES_SECONDARY_DIR = [0x40, 0x70]
+    _ENTRY_TYPES_SECONDARY_DIR = [0x40, 0x48, 0x4a, 0x70]
     _ENTRY_TYPES_PUBKEY = [0x0, 0x9, 0xa, 0x5, 0xd]
 
     def __init__(self, parent_rom, rom_address: int, type_: str, psptool, zen_generation='unknown'):
@@ -74,11 +78,11 @@ class Directory(NestedBuffer):
         self._parse_entries()
 
         # check entries for a link to a secondary directory (i.e. a continuation of this directory)
-        self.secondary_directory_address = None
+        self.secondary_directory_addresses = []
         for entry in self.entries:
             if entry.type in self._ENTRY_TYPES_SECONDARY_DIR:
                 # print_warning(f"Secondary dir at 0x{entry.buffer_offset:x}")
-                self.secondary_directory_address = entry.buffer_offset
+                self.secondary_directory_addresses.append(entry.buffer_offset)
 
         self.verify_checksum()
 
