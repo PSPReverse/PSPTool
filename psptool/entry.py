@@ -224,10 +224,6 @@ class Entry(NestedBuffer):
                 new_entry = HeaderEntry(parent_directory, parent_buffer, type_, type_flags, size, offset, blob, psptool)
                 if size == 0:
                     psptool.ph.print_warning(f"Entry with zero size. Type: {type_}. Dir: 0x{offset:x}")
-            # except Entry.ParseError:
-            #     # Hacky: Try to re-locate the entry's parent buffer to parent directory's offset
-            #     offset += parent_directory.buffer_offset
-            #     new_entry = HeaderEntry(parent_directory, parent_buffer, type_, type_flags, size, offset, blob, psptool)
             except:
                 new_entry = Entry(
                     parent_directory,
