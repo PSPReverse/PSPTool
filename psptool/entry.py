@@ -486,8 +486,8 @@ class KeyStoreEntryHeader(NestedBuffer):
         if self.has_sha256_checksum:
             self.sha256_checksum = NestedBuffer(self, 0x20, buffer_offset=0xd0)
 
+        # Based on KeyStore entries seen in: Lenovo X13 and Lenovo Ideapad 5 Pro 16ACH6
         zero_ranges = {
-            #(0x00, 0x10),
             (0x18, 0x18),
             (0x48, 0x04),
             (0x50, 0x08),

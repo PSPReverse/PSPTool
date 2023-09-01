@@ -139,8 +139,8 @@ class Directory(NestedBuffer):
             if entry_fields['type'] in BIOS_ENTRY_TYPES:
                 destination = struct.unpack('<Q', entry_bytes[0x10:0x18])[0]
 
-            # Dirty hack for Lenovo X13, change this!
-            if self.get_address() in [0xc5000, 0x4ad000]:
+            # Seen on the Lenovo X13 for the first time, tertiary directories have addresses relative to the directory
+            if self.type == "tertiary":
                 entry_fields['offset'] += self.buffer_offset
 
             try:
