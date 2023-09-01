@@ -50,7 +50,7 @@ class Directory(NestedBuffer):
         b'j\x8d+1': 2 * 4,
     }
 
-    _ENTRY_TYPES_SECONDARY_DIR = [0x40, 0x48, 0x4a, 0x70]
+    _ENTRY_TYPES_SECONDARY_DIR = [0x40, 0x48, 0x49, 0x4a, 0x70]
     _ENTRY_TYPES_PUBKEY = [0x0, 0x9, 0xa, 0x5, 0xd]
 
     def __init__(self, parent_rom, rom_address: int, type_: str, psptool, zen_generation='unknown'):
@@ -138,6 +138,10 @@ class Directory(NestedBuffer):
 
             if entry_fields['type'] in BIOS_ENTRY_TYPES:
                 destination = struct.unpack('<Q', entry_bytes[0x10:0x18])[0]
+
+            # Dirty hack for Lenovo X13, change this!
+            if self.get_address() in [0xc5000, 0x4ad000]:
+                entry_fields['offset'] += self.buffer_offset
 
             try:
                 entry = Entry.from_fields(self, self.parent_buffer,
