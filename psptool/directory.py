@@ -81,7 +81,7 @@ class Directory(NestedBuffer):
         self.secondary_directory_addresses = []
         for entry in self.entries:
             if entry.type in self._ENTRY_TYPES_SECONDARY_DIR:
-                # print_warning(f"Secondary dir at 0x{entry.buffer_offset:x}")
+                # psptool.ph.print_warning(f"Secondary dir at 0x{entry.buffer_offset:x}")
                 self.secondary_directory_addresses.append(entry.buffer_offset)
 
         self.verify_checksum()
@@ -101,6 +101,11 @@ class Directory(NestedBuffer):
         self.header[8:12] = struct.pack('<I', self.count)
         self.update_checksum()
 
+    @property
+    def address_mode(self):
+        rsvd = struct.unpack('=L', self.reserved)[0]
+        return (rsvd & 0x60000000) >> 29 if rsvd != 0 else None
+
     def _parse_header(self):
         # ugly to do this manually, but we do not know our size yet
         self._count = int.from_bytes(
@@ -108,6 +113,7 @@ class Directory(NestedBuffer):
             'little'
         )
         self.magic = self.rom.get_bytes(self.buffer_offset, 4)
+        self.reserved = self.rom.get_bytes(self.buffer_offset + 12, 4)
 
         self.header = NestedBuffer(
             self,
@@ -139,8 +145,8 @@ class Directory(NestedBuffer):
             if entry_fields['type'] in BIOS_ENTRY_TYPES:
                 destination = struct.unpack('<Q', entry_bytes[0x10:0x18])[0]
 
-            # Seen on the Lenovo X13 for the first time, tertiary directories have addresses relative to the directory
-            if self.type == "tertiary":
+            # Seen on the Lenovo X13 for the first time
+            if self.address_mode == 2:
                 entry_fields['offset'] += self.buffer_offset
 
             try:

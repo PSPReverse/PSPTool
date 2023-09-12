@@ -80,15 +80,16 @@ class Fet(NestedBuffer):
             secondary_directory_magic = self.rom.get_bytes(secondary_directory_address, 4)
             if secondary_directory_magic in [b'*\rY/', b'j\x8d+1']:
                 weird_new_directory_body = self.rom.get_bytes(secondary_directory_address+16, 8)
-                self.directories.append(
-                    Directory(self.rom, int.from_bytes(weird_new_directory_body[:4], 'little'), 'tertiary', self.psptool)
-                )
+                secondary_dir = Directory(self.rom, int.from_bytes(weird_new_directory_body[:4], 'little'), 'tertiary', self.psptool)
+                self.directories.append(secondary_dir)
             else:
                 secondary_dir = Directory(self.rom, secondary_directory_address, 'secondary', self.psptool, zen_generation)
                 self.directories.append(secondary_dir)
-                for tertiary_directory_address in secondary_dir.secondary_directory_addresses:
-                    tertiary_dir = Directory(self.rom, tertiary_directory_address, 'secondary', self.psptool, zen_generation)
-                    self.directories.append(tertiary_dir)
+
+            # Tertiary directories are a thing, apparently
+            for tertiary_directory_address in secondary_dir.secondary_directory_addresses:
+                tertiary_dir = Directory(self.rom, tertiary_directory_address, 'secondary', self.psptool, zen_generation)
+                self.directories.append(tertiary_dir)
 
     def _parse_entry_table(self):
         entries = self.get_chunks(4, 4)
