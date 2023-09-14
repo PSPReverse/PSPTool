@@ -178,9 +178,8 @@ class PSPTool:
                     'address': directory.get_address(),
                     'directoryType': directory.type,
                     'magic': directory.magic.decode('utf-8', 'backslashreplace'),
+                    'secondaryAddresses': directory.secondary_directory_addresses
                 }
-                if directory.secondary_directory_address:
-                    d['secondaryAddress'] = directory.secondary_directory_address
 
                 entries = self.ls_dir_dict(rom, index, verbose=verbose)
                 d['entries'] = entries
