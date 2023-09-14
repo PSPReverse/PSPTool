@@ -32,21 +32,23 @@ class Directory(NestedBuffer):
         'rsv2'
     ]
 
+    _DEFAULT_HEADER_SIZE = 2 * 4,
     _HEADER_SIZES = {
         b'$PSP': 4 * 4,
         b'$PL2': 4 * 4,
         b'$BHD': 4 * 4,
-        b'$BL2': 4 * 4
+        b'$BL2': 4 * 4,
     }
 
+    _DEFAULT_ENTRY_SIZE = 2 * 4,
     _ENTRY_SIZES = {
         b'$PSP': 4 * 4,
         b'$PL2': 4 * 4,
         b'$BHD': 4 * 6,
-        b'$BL2': 4 * 6
+        b'$BL2': 4 * 6,
     }
 
-    _ENTRY_TYPES_SECONDARY_DIR = [0x40, 0x70]
+    _ENTRY_TYPES_SECONDARY_DIR = [0x40, 0x48, 0x49, 0x4a, 0x70]
     _ENTRY_TYPES_PUBKEY = [0x0, 0x9, 0xa, 0x5, 0xd]
 
     def __init__(self, parent_rom, rom_address: int, type_: str, psptool, zen_generation='unknown'):
@@ -69,16 +71,16 @@ class Directory(NestedBuffer):
         self.type = type_
         self.entries: List[Entry] = []
 
-        self._entry_size = self._ENTRY_SIZES[self.magic]
+        self._entry_size = self._ENTRY_SIZES.get(self.magic, self._DEFAULT_ENTRY_SIZE)
 
         self._parse_entries()
 
         # check entries for a link to a secondary directory (i.e. a continuation of this directory)
-        self.secondary_directory_address = None
+        self.secondary_directory_addresses = []
         for entry in self.entries:
             if entry.type in self._ENTRY_TYPES_SECONDARY_DIR:
-                # print_warning(f"Secondary dir at 0x{entry.buffer_offset:x}")
-                self.secondary_directory_address = entry.buffer_offset
+                # psptool.ph.print_warning(f"Secondary dir at 0x{entry.buffer_offset:x}")
+                self.secondary_directory_addresses.append(entry.buffer_offset)
 
         self.verify_checksum()
 
@@ -97,6 +99,11 @@ class Directory(NestedBuffer):
         self.header[8:12] = struct.pack('<I', self.count)
         self.update_checksum()
 
+    @property
+    def address_mode(self):
+        rsvd = struct.unpack('=L', self.reserved)[0]
+        return (rsvd & 0x60000000) >> 29 if rsvd != 0 else None
+
     def _parse_header(self):
         # ugly to do this manually, but we do not know our size yet
         self._count = int.from_bytes(
@@ -104,15 +111,16 @@ class Directory(NestedBuffer):
             'little'
         )
         self.magic = self.rom.get_bytes(self.buffer_offset, 4)
+        self.reserved = self.rom.get_bytes(self.buffer_offset + 12, 4)
 
         self.header = NestedBuffer(
             self,
-            self._HEADER_SIZES[self.magic]
+            self._HEADER_SIZES.get(self.magic, self._DEFAULT_HEADER_SIZE)
         )
         self.body = NestedBuffer(
             self,
-            self._ENTRY_SIZES[self.magic] * self._count,
-            buffer_offset=self._HEADER_SIZES[self.magic]
+            self._ENTRY_SIZES.get(self.magic, self._DEFAULT_ENTRY_SIZE) * self._count,
+            buffer_offset=self._HEADER_SIZES.get(self.magic, self._DEFAULT_HEADER_SIZE)
         )
 
         self.buffer_size = len(self.header) + len(self.body)
@@ -134,6 +142,10 @@ class Directory(NestedBuffer):
 
             if entry_fields['type'] in BIOS_ENTRY_TYPES:
                 destination = struct.unpack('<Q', entry_bytes[0x10:0x18])[0]
+
+            # Seen on the Lenovo X13 for the first time
+            if self.address_mode == 2:
+                entry_fields['offset'] += self.buffer_offset
 
             try:
                 entry = Entry.from_fields(self, self.parent_buffer,

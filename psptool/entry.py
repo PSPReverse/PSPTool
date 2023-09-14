@@ -61,6 +61,7 @@ class Entry(NestedBuffer):
         0x12: 'SMU_OFF_CHIP_FW_2',
         0x13: 'DEBUG_UNLOCK',
         0x1A: 'PSP_S3_NV_DATA',
+        0x20: 'HARDWARE_IP_CONFIG',
         0x21: 'WRAPPED_IKEK',
         0x22: 'TOKEN_UNLOCK',
         0x24: 'SEC_GASKET',
@@ -82,11 +83,20 @@ class Entry(NestedBuffer):
         0x38: 'SEV_DATA',
         0x39: 'SEV_CODE',
         0x3A: 'FW_PSP_WHITELIST',
+        0x3C: 'VBIOS_PRELOAD',
         # 0x40: 'FW_L2_PTR',
         0x41: 'FW_IMC',
         0x42: 'FW_GEC',
         # 0x43: 'FW_XHCI',
         0x44: 'FW_INVALID',
+        0x45: 'TOS_SECURITY_POLICY',
+        0x47: 'DRTM_TA',
+        0x51: 'TOS_PUBLIC_KEY',
+        0x54: 'PSP_NVRAM',
+        0x55: 'BL_ROLLBACK_SPL',
+        0x5a: 'MSMU_BINARY_0',
+        0x5c: 'WMOS',
+        0x71: 'DMCUB_INS',
         0x46: 'ANOTHER_FET',
         0x50: 'KEY_DATABASE',
         0x5f: 'FW_PSP_SMUSCS',
@@ -101,6 +111,7 @@ class Entry(NestedBuffer):
         0x68: 'APCB_COPY',
         0x69: 'EARLY_VGA_IMAGE',
         0x6A: 'MP2_FW_CFG',
+        0x73: 'PSP_FW_BOOT_LOADER',
         0x80: 'OEM_System_Trusted_Application',
         0x81: 'OEM_System_TA_Signing_key',
         0x108: 'PSP_SMU_FN_FIRMWARE',
@@ -471,12 +482,13 @@ class KeyStoreEntryHeader(NestedBuffer):
         if self.has_sha256_checksum:
             self.sha256_checksum = NestedBuffer(self, 0x20, buffer_offset=0xd0)
 
+        # Based on KeyStore entries seen in: Lenovo X13 and Lenovo Ideapad 5 Pro 16ACH6
         zero_ranges = {
-            (0x00, 0x10),
             (0x18, 0x18),
             (0x48, 0x04),
             (0x50, 0x08),
-            (0x5c, 0x10),
+            (0x5c, 0x04),
+            (0x64, 0x08),
             (0x70, 0x0c),
             (0x80, 0x50),
             (0xf0, 0x10),
@@ -526,7 +538,7 @@ class KeyStoreEntryHeader(NestedBuffer):
     @property
     def has_sha256_checksum(self) -> bool:
         # assert self.sha256_checksum_flag_1 == self.sha256_checksum_flag_2
-        assert self.sha256_checksum_flag_1 in {0, 1}
+        assert self.sha256_checksum_flag_1 in {0, 1, 2}, f"unknown {self.sha256_checksum_flag_1=}"
         return self.sha256_checksum_flag_1 == 1
 
 
