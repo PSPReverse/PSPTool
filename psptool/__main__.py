@@ -46,6 +46,7 @@ def main():
     parser.add_argument('-n', '--no-duplicates', help=SUPPRESS, action='store_true')
     parser.add_argument('-j', '--json', help=SUPPRESS, action='store_true')
     parser.add_argument('-t', '--key-tree', help=SUPPRESS, action='store_true')
+    parser.add_argument('-m', '--metrics', help=SUPPRESS, action='store_true')
     parser.add_argument('-p', '--privkeystub', help=SUPPRESS)
     parser.add_argument('-a', '--privkeypass', help=SUPPRESS)
 
@@ -60,6 +61,7 @@ def main():
         '-n:      list unique entries only ordered by their offset',
         '-j:      output in JSON format instead of tables',
         '-t:      print tree of all signed entities and their certifying keys',
+        '-m:      print entry parsing metrics for testing',
         '', '']), action='store_true')
 
     action.add_argument('-X', '--extract-entry', help='\n'.join([
@@ -203,6 +205,8 @@ def main():
             psp.ls_json(verbose=args.verbose)
         elif args.key_tree:
             psp.cert_tree.print_key_tree()
+        elif args.metrics:
+            psp.print_metrics()
         elif args.no_duplicates:
             psp.ls_entries(verbose=args.verbose)
         else:

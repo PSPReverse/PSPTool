@@ -21,6 +21,7 @@ import zlib
 import struct
 
 from typing import Set, TypeVar
+from collections import defaultdict
 
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.backends import default_backend
@@ -127,23 +128,41 @@ class RangeDict(dict):
 class PrintHelper:
     def __init__(self, is_verbose):
         self.is_verbose = is_verbose
+        self.error_counts = defaultdict(lambda: 0)
+        self.warning_counts = defaultdict(lambda: 0)
+        self.info_counts = defaultdict(lambda: 0)
 
     def print_error_and_exit(self, arg0):
         """ Wrapper function to print errors to stderr, so we don't interfere with e.g. extraction output. """
+        self.error_counts[arg0] += 1
         arg0 = 'Error: ' + arg0 + '\n'
         sys.stderr.write(arg0)
         sys.exit(1)
 
     def print_warning(self, arg0):
         """ Wrapper function to print warnings to stderr, so we don't interfere with e.g. extraction output. """
+        self.warning_counts[arg0] += 1
         arg0 = 'Warning: ' + arg0 + '\n'
         sys.stderr.write(arg0)
 
     def print_info(self, arg0):
         """ Wrapper function to print info to stderr, so we don't interfere with e.g. extraction output. """
+        self.info_counts[arg0] += 1
         # if self.is_verbose:
         arg0 = 'Info: ' + arg0 + '\n'
         sys.stderr.write(arg0)
+
+    @property
+    def error_count(self):
+        return sum(self.error_counts.values())
+
+    @property
+    def warning_count(self):
+        return sum(self.warning_counts.values())
+
+    @property
+    def info_count(self):
+        return sum(self.info_counts.values())
 
 
 def round_to_int(n, i):

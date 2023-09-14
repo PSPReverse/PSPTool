@@ -237,3 +237,17 @@ class PSPTool:
             out.append(all_values)
 
         return out
+
+    def print_metrics(self):
+        print(self.filename)
+        print(f'{self.ph.error_count=}')
+        print(f'{self.ph.warning_count=}')
+        print(f'{self.ph.info_count=}')
+
+        rom_count = len(self.blob.roms)
+        directory_count = sum([len(rom.directories) for rom in self.blob.roms])
+        unique_entries_count = len(self.blob.unique_entries())
+
+        print(f'{rom_count=}')
+        print(f'{directory_count=}')
+        print(f'{unique_entries_count=}')
