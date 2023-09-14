@@ -78,9 +78,12 @@ class Fet(NestedBuffer):
         self.directories.append(dir_)
         for secondary_directory_address in dir_.secondary_directory_addresses:
             secondary_directory_magic = self.rom.get_bytes(secondary_directory_address, 4)
-            if secondary_directory_magic in [b'*\rY/', b'j\x8d+1']:
+            if secondary_directory_magic in [b'*\rY/', b'j\x8d+1', b'&\r=/', b'd\x8d\x011']:
                 weird_new_directory_body = self.rom.get_bytes(secondary_directory_address+16, 8)
-                secondary_dir = Directory(self.rom, int.from_bytes(weird_new_directory_body[:4], 'little'), 'tertiary', self.psptool)
+                try:
+                    secondary_dir = Directory(self.rom, int.from_bytes(weird_new_directory_body[:4], 'little'), 'tertiary', self.psptool)
+                except:
+                    self.psptool.ph.print_warning(f"Couldn't create secondary directory at 0x{secondary_directory_address:x}")
                 self.directories.append(secondary_dir)
             else:
                 secondary_dir = Directory(self.rom, secondary_directory_address, 'secondary', self.psptool, zen_generation)

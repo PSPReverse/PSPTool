@@ -32,22 +32,20 @@ class Directory(NestedBuffer):
         'rsv2'
     ]
 
+    _DEFAULT_HEADER_SIZE = 2 * 4,
     _HEADER_SIZES = {
         b'$PSP': 4 * 4,
         b'$PL2': 4 * 4,
         b'$BHD': 4 * 4,
         b'$BL2': 4 * 4,
-        b'*\rY/': 2 * 4,
-        b'j\x8d+1': 2 * 4,
     }
 
+    _DEFAULT_ENTRY_SIZE = 2 * 4,
     _ENTRY_SIZES = {
         b'$PSP': 4 * 4,
         b'$PL2': 4 * 4,
         b'$BHD': 4 * 6,
         b'$BL2': 4 * 6,
-        b'*\rY/': 2 * 4,
-        b'j\x8d+1': 2 * 4,
     }
 
     _ENTRY_TYPES_SECONDARY_DIR = [0x40, 0x48, 0x49, 0x4a, 0x70]
@@ -73,7 +71,7 @@ class Directory(NestedBuffer):
         self.type = type_
         self.entries: List[Entry] = []
 
-        self._entry_size = self._ENTRY_SIZES[self.magic]
+        self._entry_size = self._ENTRY_SIZES.get(self.magic, self._DEFAULT_ENTRY_SIZE)
 
         self._parse_entries()
 
@@ -117,12 +115,12 @@ class Directory(NestedBuffer):
 
         self.header = NestedBuffer(
             self,
-            self._HEADER_SIZES[self.magic]
+            self._HEADER_SIZES.get(self.magic, self._DEFAULT_HEADER_SIZE)
         )
         self.body = NestedBuffer(
             self,
-            self._ENTRY_SIZES[self.magic] * self._count,
-            buffer_offset=self._HEADER_SIZES[self.magic]
+            self._ENTRY_SIZES.get(self.magic, self._DEFAULT_ENTRY_SIZE) * self._count,
+            buffer_offset=self._HEADER_SIZES.get(self.magic, self._DEFAULT_HEADER_SIZE)
         )
 
         self.buffer_size = len(self.header) + len(self.body)
