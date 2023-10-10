@@ -151,7 +151,7 @@ class Blob(NestedBuffer):
                         size += 0x200
 
                 try:
-                    entry = PubkeyEntry(self, self, 0xdead, size, start, self, self.psptool)
+                    entry = PubkeyEntry(self, self, 0xdead, 0, size, start, self, self.psptool)
                     # todo: use from_fields factory instead of PubkeyEntry init
                     # entry = Entry.from_fields(self, self.parent_buffer,
                     #                           0xdead,
