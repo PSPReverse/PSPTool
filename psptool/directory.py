@@ -32,7 +32,7 @@ class Directory(NestedBuffer):
         'rsv2'
     ]
 
-    _DEFAULT_HEADER_SIZE = 2 * 4,
+    _DEFAULT_HEADER_SIZE = 2 * 4
     _HEADER_SIZES = {
         b'$PSP': 4 * 4,
         b'$PL2': 4 * 4,
@@ -40,7 +40,7 @@ class Directory(NestedBuffer):
         b'$BL2': 4 * 4,
     }
 
-    _DEFAULT_ENTRY_SIZE = 2 * 4,
+    _DEFAULT_ENTRY_SIZE = 2 * 4
     _ENTRY_SIZES = {
         b'$PSP': 4 * 4,
         b'$PL2': 4 * 4,
