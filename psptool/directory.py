@@ -191,13 +191,10 @@ class Directory(NestedBuffer):
         # apparently this masking is still needed for the PSP to parse stuff correctly
         offset |= 0xFF000000
 
-        # update type, size, offset (but not rsv0 (nor rsv1 nor rsv2 in $BHD/$BLD directories))
-        entry_bytes = b''.join([struct.pack('<I', value) for value in [type_, size, offset]])
-
-        self.body.set_bytes(
-            self._entry_size * entry_index,
-            len(entry_bytes),
-            entry_bytes
-        )
+        # update type, size, offset (rsv0 (nor rsv1 nor rsv2 in $BHD/$BLD directories))
+        self.body.set_bytes(self._entry_size * entry_index + 0, 2, struct.pack('<H', type_))
+        # todo: allow updating the address_mode which consists of two bytes right here
+        self.body.set_bytes(self._entry_size * entry_index + 4, 4, struct.pack('<I', size))
+        self.body.set_bytes(self._entry_size * entry_index + 8, 4, struct.pack('<I', offset))
 
         self.update_checksum()
