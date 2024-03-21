@@ -50,7 +50,7 @@ class NonUniqueSignedEntity(Exception):
     def __str__(self):
         start = self.existing.body.get_address()
         end = start + self.existing.body.buffer_size
-        return f'There was anlready a SignedEntity at {hex(start)}:{hex(end)} (existing={self.existing}, new={self.new})!'
+        return f'There was already a SignedEntity at {hex(start)}:{hex(end)} (existing={self.existing}, new={self.new})!'
 
 
 class NonUniquePublicKeyEntity(Exception):
