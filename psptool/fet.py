@@ -80,7 +80,7 @@ class Fet(NestedBuffer):
             secondary_directory_magic = self.rom.get_bytes(secondary_directory_address, 4)
             if secondary_directory_magic in [
                 b'*\rY/', b'j\x8d+1', b'&\r=/', b'd\x8d\x011', b'u\xbej\xb7',
-                b'\x99\xc6f\xe8', b'\x99\xbff\xbe', b'*\xbek\xb5'
+                b'\x99\xc6f\xe8', b'\x99\xbff\xbe', b'*\xbek\xb5', b'\x9d\xc6\x82\xe8', b'\x9d\xbf\x82\xbe'
             ]:
                 weird_new_directory_body = self.rom.get_bytes(secondary_directory_address+16, 8)
                 try:
