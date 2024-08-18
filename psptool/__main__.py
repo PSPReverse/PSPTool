@@ -30,82 +30,67 @@ def main():
     # CLI stuff to create a PSPTool object and interact with it
     parser = ObligingArgumentParser(description='Display, extract, and manipulate AMD PSP firmware inside BIOS ROMs.\n',
                                     formatter_class=RawTextHelpFormatter, add_help=False)
-
-    parser.add_argument('file', help='Binary file to be parsed for PSP firmware', nargs='?')
+    # Create subparsers for top-level actions
+    # Common  argument
+    common_args = ObligingArgumentParser(add_help=False)
+    common_args.add_argument('file', help='Binary file to be parsed for PSP firmware', nargs='?')
+    common_args.add_argument('-v', '--verbose', help=SUPPRESS, action='store_true')
     parser.add_argument('-h', '--help', action='help', help=SUPPRESS)
-    parser.add_argument('-v', '--verbose', help=SUPPRESS, action='store_true')
 
-    parser.add_argument('-r', '--rom-index', help=SUPPRESS, type=int, default=0)
-    parser.add_argument('-d', '--directory-index', help=SUPPRESS, type=int)
-    parser.add_argument('-e', '--entry-index', help=SUPPRESS, type=int)
-    parser.add_argument('-s', '--subfile', help=SUPPRESS)
-    parser.add_argument('-o', '--outfile', help=SUPPRESS)
-    parser.add_argument('-u', '--decompress', help=SUPPRESS, action='store_true')
-    parser.add_argument('-c', '--decrypt', help=SUPPRESS, action='store_true')
-    parser.add_argument('-k', '--pem-key', help=SUPPRESS, action='store_true')
-    parser.add_argument('-n', '--no-duplicates', help=SUPPRESS, action='store_true')
-    parser.add_argument('-j', '--json', help=SUPPRESS, action='store_true')
-    parser.add_argument('-t', '--key-tree', help=SUPPRESS, action='store_true')
-    parser.add_argument('-m', '--metrics', help=SUPPRESS, action='store_true')
-    parser.add_argument('-p', '--privkeystub', help=SUPPRESS)
-    parser.add_argument('-a', '--privkeypass', help=SUPPRESS)
 
-    action = parser.add_mutually_exclusive_group(required=False)
+    # Create subparsers for distinct actions
+    subparsers = parser.add_subparsers(dest='action', required=True)
 
-    action.add_argument('-V', '--version', action='store_true')
+    # Version action
+    subparsers.add_parser('version', help='Show version')
 
-    action.add_argument('-E', '--entries', help='\n'.join([
-        'Default: Parse and display PSP firmware entries.',
-        '[-n] [-j] [-t]',
-        '',
-        '-n:      list unique entries only ordered by their offset',
-        '-j:      output in JSON format instead of tables',
-        '-t:      print tree of all signed entities and their certifying keys',
-        '-m:      print entry parsing metrics for testing',
-        '', '']), action='store_true')
+    # List entries action
+    list_parser = subparsers.add_parser('list-entries', help='Parse and display PSP firmware entries.', aliases=['E'], parents=[common_args])
+    list_parser.set_defaults(action='list-entries')
 
-    action.add_argument('-X', '--extract-entry', help='\n'.join([
-        'Extract one or more PSP firmware entries.',
-        '[-d idx [-e idx]] [-n] [-u] [-c] [-k] [-o outfile]',
-        '',
-        '-r idx:  specifies rom_index (default: 0)',
-        '-d idx:  specifies directory_index (default: all directories)',
-        '-e idx:  specifies entry_index (default: all entries)',
-        '-n:      skip duplicate entries and extract unique entries only',
-        '-u:      uncompress compressed entries',
-        '-c:      try to decrypt entries',
-        '-k:      convert pubkeys into PEM format',
-        '-o file: specifies outfile/outdir (default: stdout/{file}_extracted)',
-        '', '']), action='store_true')
+    list_parser.add_argument('-n', '--no-duplicates', help='list unique entries only ordered by their offset', action='store_true')
+    list_parser.add_argument('-j', '--json', help='output in JSON format instead of tables', action='store_true')
+    list_parser.add_argument('-t', '--key-tree', help='print tree of all signed entities and their certifying keys', action='store_true')
+    list_parser.add_argument('-m', '--metrics', help='print entry parsing metrics for testing', action='store_true')
 
-    action.add_argument('-R', '--replace-entry', help='\n'.join([
-        'Copy a new entry (including header and signature) into the',
-        'ROM file and update metadata accordingly.',
-        '-d idx -e idx -s subfile -o outfile [-p file-stub] [-a pass]',
-        '',
-        '-r idx:  specifies rom_index (default: 0)',
-        '-d idx:  specifies directory_index',
-        '-e idx:  specifies entry_index',
-        '-s file: specifies subfile (i.e. the new entry contents)',
-        '-o file: specifies outfile',
-        '-p file: specifies file-stub (e.g. \'keys/id\') for the re-signing keys',
-        '-a pass: specifies password for the re-signing keys'
-        '', '']), action='store_true')
+    # Extract entry action
+    extract_parser = subparsers.add_parser('extract-entry', help='Extract one or more PSP firmware entries.', aliases=['X'], parents=[common_args])
+    extract_parser.set_defaults(action='extract-entry')
+    extract_parser.add_argument('-r', '--rom-index', help="specifies rom_index (default: 0)", type=int, default=0)
+    extract_parser.add_argument('-d', '--directory-index', help='specifies directory_index (default: all directories)', type=int)
+    extract_parser.add_argument('-e', '--entry-index', help='specifies entry_index (default: all entries)', type=int)
+    extract_parser.add_argument('-n', '--no-duplicates', help='skip duplicate entries and extract unique entries only', action='store_true')
+    extract_parser.add_argument('-u', '--decompress', help='uncompress compressed entries', action='store_true')
+    extract_parser.add_argument('-c', '--decrypt', help='try to decrypt entries', action='store_true')
+    extract_parser.add_argument('-k', '--pem-key', help='convert pubkeys into PEM format', action='store_true')
+    extract_parser.add_argument('-o', '--outfile', help='specifies outfile/outdir (default: stdout/{file}_extracted)')
+
+    # Replace entry action
+    replace_parser = subparsers.add_parser('replace-entry', help='Copy a new entry into the ROM file and update metadata.', aliases=['R'], parents=[common_args])
+    replace_parser.set_defaults(action='replace-entry')
+    replace_parser.add_argument('-r', '--rom-index', help="specifies rom_index (default: 0)", type=int, default=0)
+    replace_parser.add_argument('-d', '--directory-index', help='specifies directory_index', type=int)
+    replace_parser.add_argument('-e', '--entry-index', help='specifies entry_index', type=int)
+    replace_parser.add_argument('-s', '--subfile', help='subfile (i.e. the new entry contents)')
+    replace_parser.add_argument('-o', '--outfile', help='outfile')
+    replace_parser.add_argument('-p', '--privkeystub', help='specifies file-stub (e.g. \'keys/id\') for the re-signing keys')
+    replace_parser.add_argument('-a', '--privkeypass', help='specifies password for the re-signing keys')
 
     args = parser.parse_args()
     ph = PrintHelper(args.verbose)
 
-    if args.version:
+    if args.action == 'version':
         print(pkg_resources.get_distribution("psptool").version)
         sys.exit(0)
     elif not args.file:
+        print("No file set", args.action)
         parser.print_help(sys.stderr)
         sys.exit(0)
 
     psp = PSPTool.from_file(args.file, verbose=args.verbose)
     output = None
 
-    if args.extract_entry:
+    if args.action == 'extract-entry':
         if args.directory_index is not None and args.entry_index is not None:
             entry = psp.blob.roms[args.rom_index].directories[args.directory_index].entries[args.entry_index]
 
@@ -173,7 +158,7 @@ def main():
             else:
                 parser.print_help(sys.stderr)
 
-    elif args.replace_entry:
+    elif args.action == 'replace-entry':
         if args.directory_index is not None and args.entry_index is not None and args.outfile is not None:
             entry = psp.blob.roms[args.rom_index].directories[args.directory_index].entries[args.entry_index]
 
@@ -200,7 +185,7 @@ def main():
                 privkeys.save_to_files(args.privkeystub, args.privkeypass)
         else:
             parser.print_help(sys.stderr)
-    else:
+    elif args.action == 'list-entries':
         if args.json:
             psp.ls_json(verbose=args.verbose)
         elif args.key_tree:
@@ -211,6 +196,8 @@ def main():
             psp.ls_entries(verbose=args.verbose)
         else:
             psp.ls(verbose=args.verbose)
+    else:
+        parser.print_help(sys.stderr)
 
     # Output handling (stdout or outfile)
     if output is not None:
