@@ -14,8 +14,11 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+from typing import Any, Optional
 from prettytable import PrettyTable
 import sys, json
+
+from psptool.rom import Rom
 
 from .entry import Entry, HeaderEntry, PubkeyEntry
 from .blob import Blob
@@ -104,36 +107,7 @@ class PSPTool:
         #  strict mode should parse everything but give inconsistency errors like sha256_inconsistent
         entry: Entry
         for index, entry in enumerate(entries):
-            info = []
-            if entry.compressed:
-                info.append('compressed')
-            if entry.signed:
-                try:
-                    if entry.signed_entity.is_verified():
-                        info.append(f'verified({entry.get_readable_signed_by()})')
-                    else:
-                        info.append(f'veri-failed({entry.get_readable_signed_by()})')
-                except errors.NoCertifyingKey:
-                    info.append(f'key_missing({entry.signed_entity.certifying_id.as_string()[:4]})')
-                except errors.SignatureInvalid:
-                    info.append(f'invalid_sig({entry.get_readable_signed_by()})')
-            if entry.has_sha256_checksum:
-                if entry.sha256_verified:
-                    info.append(f'sha256_ok')
-                else:
-                    info.append(f'sha256_inconsistent')
-            if entry.is_legacy:
-                info.append('legacy_header')
-            if entry.encrypted:
-                info.append('encrypted')
-            if type(entry) == HeaderEntry and entry.inline_keys:
-                inline_keys = ', '.join(map(lambda k: k.get_readable_magic(), entry.inline_keys))
-                info.append(f'inline_keys({inline_keys})')
-            if type(entry) == PubkeyEntry:
-                info.append(entry.get_readable_key_usage())
-                if entry.get_readable_security_features():
-                    info.append(entry.get_readable_security_features())
-
+            info = self.extract_info(entry)
             all_values = [
                 '',
                 '',
@@ -167,16 +141,49 @@ class PSPTool:
 
         print(t.get_string(fields=fields))
 
-    def ls_json(self, verbose=False):
+    def extract_info(self, entry: Entry) -> list[str]:
+        """ Takes an entry and returns a list of attributes """
+        info = []
+        if entry.compressed:
+            info.append('compressed')
+        if entry.signed:
+            try:
+                if entry.signed_entity.is_verified():
+                    info.append(f'verified({entry.get_readable_signed_by()})')
+                else:
+                    info.append(f'veri-failed({entry.get_readable_signed_by()})')
+            except errors.NoCertifyingKey:
+                info.append(f'key_missing({entry.signed_entity.certifying_id.as_string()[:4]})')
+            except errors.SignatureInvalid:
+                info.append(f'invalid_sig({entry.get_readable_signed_by()})')
+        if entry.has_sha256_checksum:
+            if entry.sha256_verified:
+                info.append(f'sha256_ok')
+            else:
+                info.append(f'sha256_inconsistent')
+        if entry.is_legacy:
+            info.append('legacy_header')
+        if entry.encrypted:
+            info.append('encrypted')
+        if type(entry) == HeaderEntry and entry.inline_keys:
+            inline_keys = ', '.join(map(lambda k: k.get_readable_magic(), entry.inline_keys))
+            info.append(f'inline_keys({inline_keys})')
+        if type(entry) == PubkeyEntry:
+            info.append(entry.get_readable_key_usage())
+            if entry.get_readable_security_features():
+                info.append(entry.get_readable_security_features())
+        return info
+
+    def ls_json(self, verbose=False) -> None:
         data = []
         # todo: add notion of Multi-ROMs
         for rom in self.blob.roms:
             for index, directory in enumerate(rom.directories):
-                PrettyTable(['Directory', 'Addr', 'Type', 'Magic', 'Secondary Directory'])
                 d = {
                     'directory': index,
                     'address': directory.get_address(),
                     'directoryType': directory.type,
+                    'generation': directory.zen_generation,
                     'magic': directory.magic.decode('utf-8', 'backslashreplace'),
                     'secondaryAddresses': directory.secondary_directory_addresses
                 }
@@ -186,31 +193,18 @@ class PSPTool:
                 data.append(d)
         print(json.dumps(data))
 
-    def ls_dir_dict(self, fet,  directory_index, verbose=False):
+    def ls_dir_dict(self, fet: Rom,  directory_index: int, verbose=False) -> list[dict[str, Any]]:
         directory = fet.directories[directory_index]
         return self.ls_entries_dict(entries=directory.entries)
 
-    def ls_entries_dict(self, entries=None):
+    def ls_entries_dict(self, entries: Optional[list[Entry]]=None) -> list[dict[str, Any]]:
         # list all entries of all directories by default (sorted by their address)
         if entries is None:
             entries = sorted(self.rom.unique_entries)
 
         out = []
         for index, entry in enumerate(entries):
-            info = []
-            if entry.compressed:
-                info.append('compressed')
-            if entry.signed:
-                info.append(f'signed({entry.get_readable_signed_by()})')
-                try:
-                    if entry.signed_entity.is_verified():
-                        info.append('verified')
-                except errors.NoCertifyingKey:
-                    info.append('no_key')
-            if entry.is_legacy:
-                info.append('legacy header')
-            if entry.encrypted:
-                info.append('encrypted')
+            info = self.extract_info(entry)
 
             all_values = {
                 'index': index,
