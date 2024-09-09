@@ -14,7 +14,9 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from .entry import HeaderEntry, PubkeyEntry, KeyStoreEntry, KeyStoreKey
+from .header_file import HeaderFile
+from .pubkey_file import PubkeyFile
+from .key_store_file import KeyStoreFile, KeyStoreKey
 from .utils import NestedBuffer, RangeDict
 from .crypto import PublicKey, PrivateKey, KeyType, PrivateKeyDict, KeyId, Signature
 
@@ -24,9 +26,9 @@ from . import errors
 
 
 class SignedEntity:
-    def __init__(self, entry, certifying_id: KeyId, signature: Signature, psptool):
+    def __init__(self, file, certifying_id: KeyId, signature: Signature, psptool):
         self.psptool = psptool
-        self.entry = entry
+        self.file = file
         self.certifying_id = certifying_id
         self.signature = signature
 
@@ -35,10 +37,10 @@ class SignedEntity:
         self.contained_keys = set()
 
     def get_address(self):
-        return self.entry.get_address()
+        return self.file.get_address()
 
     def get_length(self):
-        return self.entry.buffer_size
+        return self.file.buffer_size
 
     def get_range(self):
         start = self.get_address()
@@ -48,24 +50,24 @@ class SignedEntity:
         return f'SignedEntity(@{self.get_address():x}:{self.get_length():x})'
 
     @staticmethod
-    def _from_pubkey_entry(pke, psptool):
-        if pke.signed:
-            return SignedEntity(pke, pke.certifying_id, pke.signature, psptool)
+    def _from_pubkey_file(pkf, psptool):
+        if pkf.is_signed:
+            return SignedEntity(pkf, pkf.certifying_id, pkf.signature, psptool)
         return None
 
     @staticmethod
-    def _from_header_entry(he: HeaderEntry, psptool):
-        if not he.signed:
+    def _from_header_file(hf: HeaderFile, psptool):
+        if not hf.is_signed:
             return None
 
-        signature = Signature.from_nested_buffer(he.signature)
-        certifying_id = KeyId(he, 0x10, buffer_offset=0x38)
+        signature = Signature.from_nested_buffer(hf.signature)
+        certifying_id = KeyId(hf, 0x10, buffer_offset=0x38)
 
-        return SignedEntity(he, certifying_id, signature, psptool)
+        return SignedEntity(hf, certifying_id, signature, psptool)
 
     @classmethod
-    def _from_key_store_entry(cls, kse: KeyStoreEntry, psptool):
-        return SignedEntity(kse, kse.header.certifying_id, kse.signature, psptool)
+    def _from_key_store_file(cls, ksf: KeyStoreFile, psptool):
+        return SignedEntity(ksf, ksf.header.certifying_id, ksf.signature, psptool)
 
     def is_verified(self):
         return self.verify_with_tree()
@@ -93,22 +95,22 @@ class SignedEntity:
         return True
 
     def verify_with_pubkey(self, pubkey: PublicKey) -> bool:
-        return pubkey.verify_blob(self.entry.get_signed_bytes(), self.signature.get_bytes())
+        return pubkey.verify_blob((self.file.get_signed_bytes()), self.signature.get_bytes())
 
-    # resigns this entry only
+    # resigns this file only
     def resign_only(self, privkey: PrivateKey):
-        print(f'Resigning {self} ({self.entry})')
-        if self.entry.has_sha256_checksum:
-            print(f'    Checking sha256 checksum of {self.entry}')
-            if self.entry.verify_sha256(print_warning=False):
+        print(f'Resigning {self} ({self.file})')
+        if self.file.has_sha256_checksum:
+            print(f'    Checking sha256 checksum of {self.file}')
+            if self.file.verify_sha256(print_warning=False):
                 print(f'        sha256 still valid!')
             else:
                 print(f'        Need to rehash')
-                self.entry.update_sha256()
+                self.file.update_sha256()
                 print(f'        Done')
         assert self.signature.buffer_size == privkey.signature_size, \
             f"{self.signature.buffer_size=}, {privkey.signature_size=}"
-        signature = privkey.sign_blob(self.entry.get_signed_bytes())
+        signature = privkey.sign_blob(self.file.get_signed_bytes())
         assert len(signature) == self.signature.buffer_size, f'Could not resign {self} with {privkey}: ' \
                                                              f'The new signature has the wrong length ' \
                                                              f'{len(signature)} != {self.signature.buffer_size}'
@@ -143,7 +145,7 @@ class PublicKeyEntity:
         return self.key_id.as_string()[:4]
 
     def __repr__(self) -> str:
-        return f'PubkeyEntity({self.get_magic()}, @{self.get_address():x})'
+        return f'PubkeyEntity({self.get_magic()}, @{self.get_address():x}, {self.key_type.signature_size=})'
 
     def is_same(self, other) -> bool:
         if self.key_id[:] != other.key_id[:]:
@@ -157,15 +159,15 @@ class PublicKeyEntity:
         return True
 
     @classmethod
-    def _from_pubkey_entry(cls, pke: PubkeyEntry, psptool):
-        if pke.modulus_size == 0x100:
+    def _from_pubkey_file(cls, pkf: PubkeyFile, psptool):
+        if pkf.modulus_size == 0x100:
             key_type = KeyType.from_name('rsa2048')
-        elif pke.modulus_size == 0x200:
+        elif pkf.modulus_size == 0x200:
             key_type = KeyType.from_name('rsa4096')
         else:
-            raise Exception(f'Unknown PubkeyEntry modulus size ({hex(pke.modulus_size)}) for {pke}')
+            raise Exception(f'Unknown PubkeyFile modulus size ({hex(pkf.modulus_size)}) for {pkf}')
 
-        return PublicKeyEntity(key_type, pke.key_id, pke.crypto_material, psptool)
+        return PublicKeyEntity(key_type, pkf.key_id, pkf.crypto_material, psptool)
 
     @classmethod
     def _from_key_store_key(cls, ksk: KeyStoreKey, psptool):
@@ -333,46 +335,46 @@ class CertificateTree:
         for signed_entity in pubkey.certified_entities:
             signed_entity.certifying_keys.add(pubkey)
 
-    def add_header_entry(self, header_entry) -> SignedEntity:
-        signed_entity = SignedEntity._from_header_entry(header_entry, self.psptool)
+    def add_header_file(self, header_file) -> SignedEntity:
+        signed_entity = SignedEntity._from_header_file(header_file, self.psptool)
         if signed_entity:
             try:
                 self.add_signed_entity(signed_entity)
             except errors.NonUniqueSignedEntity as e:
                 signed_entity = e.existing
-            header_entry.signed_entity = signed_entity
+            header_file.signed_entity = signed_entity
             return signed_entity
         return None
 
-    def add_pubkey_entry(self, pubkey_entry: PubkeyEntry) -> (PublicKeyEntity, SignedEntity):
-        signed_entity = SignedEntity._from_pubkey_entry(pubkey_entry, self.psptool)
+    def add_pubkey_file(self, pubkey_file: PubkeyFile) -> (PublicKeyEntity, SignedEntity):
+        signed_entity = SignedEntity._from_pubkey_file(pubkey_file, self.psptool)
         if signed_entity:
             try:
                 self.add_signed_entity(signed_entity)
             except errors.NonUniqueSignedEntity as e:
                 signed_entity = e.existing
-            pubkey_entry.signed_entity = signed_entity
+            pubkey_file.signed_entity = signed_entity
 
-        pubkey = PublicKeyEntity._from_pubkey_entry(pubkey_entry, self.psptool)
+        pubkey = PublicKeyEntity._from_pubkey_file(pubkey_file, self.psptool)
         if pubkey:
             try:
                 self.add_pubkey_entity(pubkey)
             except errors.NonUniquePublicKeyEntity as e:
                 pubkey = e.existing
-            pubkey_entry.pubkey_entity = pubkey
+            pubkey_file.pubkey_entity = pubkey
 
         return pubkey, signed_entity
 
-    def add_key_store_entry(self, key_store_entry: KeyStoreEntry):
-        signed_entity = SignedEntity._from_key_store_entry(key_store_entry, self.psptool)
+    def add_key_store_file(self, key_store_file: KeyStoreFile):
+        signed_entity = SignedEntity._from_key_store_file(key_store_file, self.psptool)
         if signed_entity:
             try:
                 self.add_signed_entity(signed_entity)
             except errors.NonUniqueSignedEntity as e:
                 signed_entity = e.existing
-            key_store_entry.signed_entity = signed_entity
+            key_store_file.signed_entity = signed_entity
 
-        for key_store_key in key_store_entry.key_store.keys:
+        for key_store_key in key_store_file.key_store.keys:
             pubkey = PublicKeyEntity._from_key_store_key(key_store_key, self.psptool)
             try:
                 self.add_pubkey_entity(pubkey)
@@ -386,19 +388,19 @@ class CertificateTree:
 
         for rom in blob.roms:
             for dr in rom.directories:
-                for entry in dr.entries:
-                    if type(entry) == PubkeyEntry:
-                        ct.add_pubkey_entry(entry)
-                    if type(entry) == HeaderEntry:
-                        ct.add_header_entry(entry)
-                    if type(entry) == KeyStoreEntry:
-                        ct.add_key_store_entry(entry)
+                for file in dr.files:
+                    if type(file) == PubkeyFile:
+                        ct.add_pubkey_file(file)
+                    if type(file) == HeaderFile:
+                        ct.add_header_file(file)
+                    if type(file) == KeyStoreFile:
+                        ct.add_key_store_file(file)
 
         # Add unlisted/inline keys as found by additional blob parsing efforts
         ids_to_find = ct.ids
         while ids_to_find:
             for pubkey in blob.find_inline_pubkey_entries(ids_to_find):
-                ct.add_pubkey_entry(pubkey)
+                ct.add_pubkey_file(pubkey)
             ids_to_find = ct.ids.difference(ids_to_find)
 
         return ct

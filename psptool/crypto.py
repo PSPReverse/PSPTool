@@ -101,7 +101,6 @@ class PrivateKey(WithSignatureSize):
         pass
 
 
-
 class KeyType:
 
     _key_types = dict()
@@ -127,7 +126,6 @@ class KeyType:
 
         KeyType._key_types[name] = self
 
-
     def load_private_key(self, filename: str, password: str = None) -> PrivateKey:
         return self.PrivateKey.load_from_file(filename, password=password)
 
@@ -144,13 +142,14 @@ def _create_parent_dirname(dirname):
         _create_parent_dirname(dirname)
         mkdir(dirname)
 
+
 def create_parent_dir(filestub):
     _create_parent_dirname(path.realpath(filestub))
 
 
 class PrivateKeyDict:
 
-    def __init__(self, keys = dict()):
+    def __init__(self, keys=dict()):
         self.keys = keys
 
     def __getitem__(self, name: str) -> PrivateKey:

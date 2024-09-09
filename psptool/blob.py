@@ -22,12 +22,12 @@ from typing import List
 from .fet import EmptyFet
 from .rom import Rom
 from .utils import NestedBuffer, RangeDict
-from .entry import Entry, PubkeyEntry
+from .file import File
+from .pubkey_file import PubkeyFile, InlinePubkeyFile
 
 
 class Blob(NestedBuffer):
     _FIRMWARE_ENTRY_MAGIC = b'\xAA\x55\xAA\x55'
-    _FIRMWARE_ENTRY_TABLE_BASE_ADDRESS = 0x20000
 
     class NoFirmwareEntryTableError(Exception):
         pass
@@ -38,7 +38,7 @@ class Blob(NestedBuffer):
         self.psptool = psptool
         self.roms: List[Rom] = []
 
-        potential_fet_offsets = [
+        possible_fet_offsets = [
             # as seen by a PSPTrace Zen 1 boot
             0x020000,
             0xfa0000,
@@ -48,15 +48,15 @@ class Blob(NestedBuffer):
             0x820000,
         ]
 
-        rom_size = 0x1000000
-        if self.buffer_size < rom_size:
-            self.psptool.ph.print_warning("Input  file < 16M, will assume 8M ROM ...")
-            rom_size = 0x800000
+        possible_rom_sizes = [32, 16, 8]
+        _rom_size = max(value for value in possible_rom_sizes if value * 1024 * 1024 <= self.buffer_size)
+        rom_size = _rom_size * 1024 * 1024
+        self.psptool.ph.print_warning(f"Input  file is {self.buffer_size:#x}, will assume ROM size of {_rom_size}M")
 
         # For each FET, we try to create a 16MB ROM starting at `FET - offset`
         for fet_location in self._find_fets():
             fet_parsed = False
-            for fet_offset in potential_fet_offsets:
+            for fet_offset in possible_fet_offsets:
                 if fet_location < fet_offset:
                     # would lead to Blob underflow
                     continue
@@ -84,16 +84,16 @@ class Blob(NestedBuffer):
         return f'Blob({self.roms=})'
 
     def _construct_range_dict(self):
-        all_entries = self.unique_entries()
+        all_files = self.unique_files()
 
         # create RangeDict in order to find entries, directories and fets for a given address
         directories = [directory for rom in self.roms for directory in rom.directories]
         self.range_dict = RangeDict({
             **{
-                range(entry.get_address(),
-                      entry.get_address() + entry.buffer_size):  # key is start and end address of the entry
-                entry
-                for entry in all_entries if entry.buffer_size != 0xffffffff  # value is its type
+                range(file.get_address(),
+                      file.get_address() + file.buffer_size):  # key is start and end address of the file
+                file
+                for file in all_files if file.buffer_size != 0xffffffff  # value is its type
             }, **{
                 range(directory.get_address(), directory.get_address() + len(directory)):
                     directory
@@ -105,14 +105,14 @@ class Blob(NestedBuffer):
             }
         })
 
-    def unique_entries(self) -> set:
+    def unique_files(self) -> set:
         directories = [directory for rom in self.roms for directory in rom.directories]
-        directory_entries = [directory.entries for directory in directories]
+        directory_files = [directory.files for directory in directories]
         # flatten list of lists
-        all_entries = [entry for sublist in directory_entries for entry in sublist]
+        all_files = [file for sublist in directory_files for file in sublist]
         # filter duplicates through set
-        unique_entries = set(all_entries)
-        return unique_entries
+        unique_files = set(all_files)
+        return unique_files
 
     def _find_fets(self):
         # AA55AA55 is to unspecific, so we require a word of padding before (to be tested)
@@ -122,56 +122,45 @@ class Blob(NestedBuffer):
 
     def _find_inline_pubkeys(self, fp):
 
-        """ Try to find a pubkey anywhere in the blob.
+        """ Try to find a pubkey in any of the found files.
         The pubkey is identified by its fingerprint. If found, the pubkey is
         added to the list of pubkeys of the blob """
         found_pubkeys = []
 
-        m = re.finditer(re.escape(binascii.a2b_hex(fp)), self.get_bytes())
-        for index in m:
-            start = index.start() - 4
-            if int.from_bytes(self[start:start + 4], 'little') == 1:
-                # Maybe a pubkey. Determine its size:
-                pub_exp_size = int.from_bytes(self[start + 0x38: start + 0x3c],
-                                              'little')
-                if pub_exp_size == 2048:
-                    size = 0x240
-                elif pub_exp_size == 4096:
-                    size = 0x440
-                else:
-                    continue
-
-                key_id = self[start + 0x04: start + 0x14]
-                cert_id = self[start + 0x14: start + 0x24]
-
-                if key_id != cert_id and cert_id != b'\0' * 0x10:
+        for file in self.unique_files():
+            if type(file) == PubkeyFile:
+                continue  # Pubkeys don't have inline keys but will only produce false positives
+            m = re.finditer(re.escape(binascii.a2b_hex(fp)), file.get_bytes())
+            for index in m:
+                start_offset = index.start() - 4
+                if int.from_bytes(self[start_offset:start_offset + 4], 'little') in PubkeyFile.KNOWN_VERSIONS:
+                    # Maybe a pubkey. Determine its size:
+                    pub_exp_size = int.from_bytes(self[start_offset + 0x38: start_offset + 0x3c],
+                                                  'little')
                     if pub_exp_size == 2048:
-                        size += 0x100
+                        size = 0x240
+                    elif pub_exp_size == 4096:
+                        size = 0x440
                     else:
-                        size += 0x200
+                        continue
 
-                try:
-                    entry = PubkeyEntry(self, self, 0xdead, 0, size, start, self, self.psptool)
-                    # todo: use from_fields factory instead of PubkeyEntry init
-                    # entry = Entry.from_fields(self, self.parent_buffer,
-                    #                           0xdead,
-                    #                           size,
-                    #                           start,
-                    #                           self,
-                    #                           self.psptool)
-                    assert isinstance(entry, PubkeyEntry)
-                    entry.is_inline = True
-                    entry.parent_entry = self.range_dict[entry.get_address()]
-                    if type(entry.parent_entry) == PubkeyEntry:
-                        break
-                    entry.parent_entry.inline_keys.add(entry)
-                    found_pubkeys.append(entry)
-                except Entry.ParseError as e:
-                    self.psptool.ph.print_warning(f"_find_pubkey: Entry parse error at 0x{start:x}")
-                    self.psptool.ph.print_warning(f'{e}')
-                except Exception as e:
-                    self.psptool.ph.print_warning(f"_find_pubkey: Error couldn't convert key at: 0x{start:x}")
-                    self.psptool.ph.print_warning(f'{e}')
+                    key_id = self[start_offset + 0x04: start_offset + 0x14]
+                    cert_id = self[start_offset + 0x14: start_offset + 0x24]
+
+                    if key_id != cert_id and cert_id != b'\0' * 0x10:
+                        if pub_exp_size == 2048:
+                            size += 0x100
+                        else:
+                            size += 0x200
+
+                    try:
+                        file = InlinePubkeyFile(file, start_offset, size, self, self.psptool)
+                        assert isinstance(file, PubkeyFile)
+                        file.inline_keys.add(file)
+                        found_pubkeys.append(file)
+                    except File.ParseError as e:
+                        self.psptool.ph.print_warning(f"_find_pubkey: File parse error at 0x{start_offset:x}")
+                        self.psptool.ph.print_warning(f'{e}')
 
         return found_pubkeys
 
@@ -181,7 +170,7 @@ class Blob(NestedBuffer):
             found_pkes += self._find_inline_pubkeys(key_id)
         return found_pkes
 
-    def get_entries_by_type(self, type_) -> List[Entry]:
+    def get_entries_by_type(self, type_) -> List[File]:
         entries = []
 
         for rom in self.roms:

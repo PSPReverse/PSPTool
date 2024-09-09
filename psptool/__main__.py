@@ -20,7 +20,8 @@ import pkg_resources
 
 from .psptool import PSPTool
 from .utils import ObligingArgumentParser, PrintHelper
-from .entry import PubkeyEntry, HeaderEntry
+from .header_file import HeaderFile
+from .pubkey_file import PubkeyFile
 from .crypto import PrivateKeyDict
 
 from argparse import RawTextHelpFormatter, SUPPRESS
@@ -37,7 +38,7 @@ def main():
 
     parser.add_argument('-r', '--rom-index', help=SUPPRESS, type=int, default=0)
     parser.add_argument('-d', '--directory-index', help=SUPPRESS, type=int)
-    parser.add_argument('-e', '--entry-index', help=SUPPRESS, type=int)
+    parser.add_argument('-e', '--file-index', help=SUPPRESS, type=int)
     parser.add_argument('-s', '--subfile', help=SUPPRESS)
     parser.add_argument('-o', '--outfile', help=SUPPRESS)
     parser.add_argument('-u', '--decompress', help=SUPPRESS, action='store_true')
@@ -61,10 +62,10 @@ def main():
         '-n:      list unique entries only ordered by their offset',
         '-j:      output in JSON format instead of tables',
         '-t:      print tree of all signed entities and their certifying keys',
-        '-m:      print entry parsing metrics for testing',
+        '-m:      print parsing metrics for testing',
         '', '']), action='store_true')
 
-    action.add_argument('-X', '--extract-entry', help='\n'.join([
+    action.add_argument('-X', '--extract-file', help='\n'.join([
         'Extract one or more PSP firmware entries.',
         '[-d idx [-e idx]] [-n] [-u] [-c] [-k] [-o outfile]',
         '',
@@ -78,15 +79,15 @@ def main():
         '-o file: specifies outfile/outdir (default: stdout/{file}_extracted)',
         '', '']), action='store_true')
 
-    action.add_argument('-R', '--replace-entry', help='\n'.join([
-        'Copy a new entry (including header and signature) into the',
-        'ROM file and update metadata accordingly.',
+    action.add_argument('-R', '--replace-file', help='\n'.join([
+        'Copy a new file (including header and signature) into the',
+        'ROM file and update file and other metadata accordingly.',
         '-d idx -e idx -s subfile -o outfile [-p file-stub] [-a pass]',
         '',
         '-r idx:  specifies rom_index (default: 0)',
         '-d idx:  specifies directory_index',
         '-e idx:  specifies entry_index',
-        '-s file: specifies subfile (i.e. the new entry contents)',
+        '-s file: specifies subfile (i.e. the new file contents)',
         '-o file: specifies outfile',
         '-p file: specifies file-stub (e.g. \'keys/id\') for the re-signing keys',
         '-a pass: specifies password for the re-signing keys'
@@ -105,22 +106,22 @@ def main():
     psp = PSPTool.from_file(args.file, verbose=args.verbose)
     output = None
 
-    if args.extract_entry:
+    if args.extract_file:
         if args.directory_index is not None and args.entry_index is not None:
-            entry = psp.blob.roms[args.rom_index].directories[args.directory_index].entries[args.entry_index]
+            file = psp.blob.roms[args.rom_index].directories[args.directory_index].entries[args.entry_index]
 
             if args.decompress:
-                if not entry.compressed:
-                    ph.print_error_and_exit(f'Entry is not compressed {entry.get_readable_type()}')
-                output = entry.get_signed_bytes()
+                if not file.compressed:
+                    ph.print_error_and_exit(f'File is not compressed {file.get_readable_type()}')
+                output = file.get_signed_bytes()
             elif args.decrypt:
-                if not entry.encrypted:
-                    ph.print_error_and_exit(f'Entry is not encrypted {entry.get_readable_type()}')
-                output = entry.to_decrypted_entry_bytes()
+                if not file.encrypted:
+                    ph.print_error_and_exit(f'File is not encrypted {file.get_readable_type()}')
+                output = file.to_decrypted_file_bytes()
             elif args.pem_key:
-                output = entry.get_pem_encoded()
+                output = file.get_pem_encoded()
             else:
-                output = entry.get_bytes()
+                output = file.get_bytes()
 
         else:
             if args.entry_index is None:  # if neither directory_index nor entry_index are specified
@@ -132,40 +133,40 @@ def main():
                 if args.no_duplicates is False:
                     outdir = args.outfile or f'./{psp.filename}_extracted'
                     for dir_index, directory in enumerate(directories):
-                        for entry_index, entry in enumerate(directory.entries):
-                            if args.decompress and type(entry) is HeaderEntry:
-                                out_bytes = entry.get_signed_bytes()
-                            elif args.decrypt and type(entry) is HeaderEntry:
-                                out_bytes = entry.get_decrypted()
-                            elif args.pem_key and type(entry) is PubkeyEntry:
-                                out_bytes = entry.get_pem_encoded()
+                        for entry_index, file in enumerate(directory.entries):
+                            if args.decompress and type(file) is HeaderFile:
+                                out_bytes = file.get_signed_bytes()
+                            elif args.decrypt and type(file) is HeaderFile:
+                                out_bytes = file.get_decrypted()
+                            elif args.pem_key and type(file) is PubkeyFile:
+                                out_bytes = file.get_pem_encoded()
                             else:
-                                out_bytes = entry.get_bytes()
+                                out_bytes = file.get_bytes()
 
-                            outpath = outdir + '/d%.2d_e%.2d_%s' % (dir_index, entry_index, entry.get_readable_type())
-                            if type(entry) is HeaderEntry:
-                                outpath += f'_{entry.get_readable_version()}'
+                            outpath = outdir + '/d%.2d_e%.2d_%s' % (dir_index, entry_index, file.get_readable_type())
+                            if type(file) is HeaderFile:
+                                outpath += f'_{file.get_readable_version()}'
 
                             os.makedirs(os.path.dirname(outpath), exist_ok=True)
                             with open(outpath, 'wb') as f:
                                 f.write(out_bytes)
                     ph.print_info(f"Extracted all entries to {outdir}")
                 else:  # no_duplicates is True
-                    for entry in psp.blob.roms[args.rom_index].unique_entries:
-                        if args.decompress and type(entry) is HeaderEntry:
-                            out_bytes = entry.get_signed_bytes()
-                        elif args.decrypt and type(entry) is HeaderEntry:
-                            out_bytes = entry.get_decrypted()
-                        elif args.pem_key and type(entry) is PubkeyEntry:
-                            out_bytes = entry.get_pem_encoded()
+                    for file in psp.blob.roms[args.rom_index].unique_files:
+                        if args.decompress and type(file) is HeaderFile:
+                            out_bytes = file.get_signed_bytes()
+                        elif args.decrypt and type(file) is HeaderFile:
+                            out_bytes = file.get_decrypted()
+                        elif args.pem_key and type(file) is PubkeyFile:
+                            out_bytes = file.get_pem_encoded()
                         else:
-                            out_bytes = entry.get_bytes()
+                            out_bytes = file.get_bytes()
 
                         outdir = args.outfile or f'./{psp.filename}_unique_extracted'
-                        outpath = outdir + '/%s' % (entry.get_readable_type())
+                        outpath = outdir + '/%s' % (file.get_readable_type())
 
-                        if type(entry) is HeaderEntry:
-                            outpath += f'_{entry.get_readable_version()}'
+                        if issubclass(type(file), HeaderFile):
+                            outpath += f'_{file.get_readable_version()}'
 
                         os.makedirs(os.path.dirname(outpath), exist_ok=True)
                         with open(outpath, 'wb') as f:
@@ -173,26 +174,26 @@ def main():
             else:
                 parser.print_help(sys.stderr)
 
-    elif args.replace_entry:
+    elif args.replace_file:
         if args.directory_index is not None and args.entry_index is not None and args.outfile is not None:
-            entry = psp.blob.roms[args.rom_index].directories[args.directory_index].entries[args.entry_index]
+            file = psp.blob.roms[args.rom_index].directories[args.directory_index].entries[args.entry_index]
 
-            # Substituting an entry is actually optional to allow plain re-signs
+            # Substituting an file is actually optional to allow plain re-signs
             if args.subfile is not None:
                 with open(args.subfile, 'rb') as f:
                     sub_binary = f.read()
-                # Keep the existing entry's address, but adapt its size
-                entry.move_buffer(entry.get_address(), len(sub_binary))
-                entry.set_bytes(0, len(sub_binary), sub_binary)
+                # Keep the existing file's address, but adapt its size
+                file.move_buffer(file.get_address(), len(sub_binary))
+                file.set_bytes(0, len(sub_binary), sub_binary)
 
             privkeys = None
             if args.privkeystub:
                 privkeys = PrivateKeyDict.read_from_files(args.privkeystub, args.privkeypass)
 
-            if hasattr(entry, 'signed_entity') and entry.signed_entity:
-                entry.signed_entity.resign_and_replace(privkeys=privkeys, recursive=True)
+            if hasattr(file, 'signed_entity') and file.signed_entity:
+                file.signed_entity.resign_and_replace(privkeys=privkeys, recursive=True)
             else:
-                ph.print_warning("Did not resign anything since target entry is not signed")
+                ph.print_warning("Did not resign anything since target file is not signed")
 
             psp.to_file(args.outfile)
 
@@ -208,7 +209,7 @@ def main():
         elif args.metrics:
             psp.print_metrics()
         elif args.no_duplicates:
-            psp.ls_entries(verbose=args.verbose)
+            psp.ls_files(verbose=args.verbose)
         else:
             psp.ls(verbose=args.verbose)
 

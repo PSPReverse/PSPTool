@@ -62,41 +62,6 @@ class Fet(NestedBuffer):
             raise EmptyFet()
         return size
 
-    def _create_directory(self, addr, magic, zen_generation):
-        # todo: move this responsibility to the parent ROM
-        if magic == b'$PSP':
-            type_ = "PSP"
-        elif magic == b'$BHD':
-            type_ = "BIOS"
-        elif magic == b'\xff\xff\xff\xff':
-            self.psptool.ph.print_warning(f"Empty FET entry at ROM address {hex(addr)}")
-            return
-        else:
-            self.psptool.ph.print_warning(f"Unknown FET entry with magic {magic} at ROM address {hex(addr)}")
-            return
-        dir_ = Directory(self.rom, addr, type_, self.psptool, zen_generation)
-        self.directories.append(dir_)
-        for secondary_directory_address in dir_.secondary_directory_addresses:
-            secondary_directory_magic = self.rom.get_bytes(secondary_directory_address, 4)
-            if secondary_directory_magic in [
-                b'*\rY/', b'j\x8d+1', b'&\r=/', b'd\x8d\x011', b'u\xbej\xb7',
-                b'\x99\xc6f\xe8', b'\x99\xbff\xbe', b'*\xbek\xb5', b'\x9d\xc6\x82\xe8', b'\x9d\xbf\x82\xbe'
-            ]:
-                weird_new_directory_body = self.rom.get_bytes(secondary_directory_address+16, 8)
-                try:
-                    secondary_dir = Directory(self.rom, int.from_bytes(weird_new_directory_body[:4], 'little'), 'tertiary', self.psptool)
-                except:
-                    self.psptool.ph.print_warning(f"Couldn't create secondary directory at 0x{secondary_directory_address:x}")
-                self.directories.append(secondary_dir)
-            else:
-                secondary_dir = Directory(self.rom, secondary_directory_address, 'secondary', self.psptool, zen_generation)
-                self.directories.append(secondary_dir)
-
-            # Tertiary directories are a thing, apparently
-            for tertiary_directory_address in secondary_dir.secondary_directory_addresses:
-                tertiary_dir = Directory(self.rom, tertiary_directory_address, 'secondary', self.psptool, zen_generation)
-                self.directories.append(tertiary_dir)
-
     def _parse_entry_table(self):
         entries = self.get_chunks(4, 4)
         for _index, entry in enumerate(entries):
@@ -113,15 +78,18 @@ class Fet(NestedBuffer):
             if dir_magic == b'2PSP' or dir_magic == b'2BHD':
                 combo_results = self._parse_combo_dir(rom_addr)
                 for result in combo_results:
-                    combo_address = result[0]
+                    combo_offset = result[0]
                     combo_zen_gen = result[1]
-                    dir_magic = self.rom[combo_address:combo_address + 4]
-                    self._create_directory(combo_address, dir_magic, combo_zen_gen)
+                    dir_magic = self.rom[combo_offset:combo_offset + 4]
+                    dirs = Directory.create_directories_if_not_exist(combo_offset, self)
+                    for dir_ in dirs:
+                        if dir_ not in self.directories:
+                            self.directories.append(dir_)
             elif dir_magic == b'$PSP':
-                self._create_directory(rom_addr, dir_magic, zen_generation='unknown')
-            else:
-                self._create_directory(rom_addr, dir_magic, zen_generation='unknown')
-                pass
+                dirs = Directory.create_directories_if_not_exist(rom_addr, self)
+                for dir_ in dirs:
+                    if dir_ not in self.directories:
+                        self.directories.append(dir_)
 
     def _parse_combo_dir(self, dir_addr):
         results = []
@@ -144,6 +112,8 @@ class Fet(NestedBuffer):
             for possible_zen_generation in ZEN_GENERATION_IDS:
                 if zen_generation_id in ZEN_GENERATION_IDS[possible_zen_generation]:
                     zen_generation = possible_zen_generation
+            if zen_generation == 'unknown':
+                self.psptool.ph.print_warning(f"Unknown {zen_generation_id=}")
 
             results.append((entry_addr, zen_generation))
 

@@ -41,7 +41,6 @@ class SignatureInconsistent(SignatureInvalid):
                f'verified by {self.pubkey}!'
 
 
-
 class NonUniqueSignedEntity(Exception):
     def __init__(self, existing, new):
         self.existing = existing

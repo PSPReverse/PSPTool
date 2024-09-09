@@ -16,76 +16,119 @@
 
 import struct
 
-from .utils import NestedBuffer, chunker, fletcher32
-from .entry import Entry, BIOS_ENTRY_TYPES
+from .entry import DirectoryEntry, BiosDirectoryEntry
+from .utils import NestedBuffer, fletcher32
+from .file import File, BiosFile, SECONDARY_DIRECTORY_ENTRY_TYPES, TERTIARY_DIRECTORY_ENTRY_TYPES
 
 from typing import List
 
 
 class Directory(NestedBuffer):
-    ENTRY_FIELDS = [
-        'type',
-        'size',
-        'offset',
-        'rsv0',
-        'rsv1',
-        'rsv2'
-    ]
+    DIRECTORY_MAGICS = [b'$PSP', b'$PL2']
+    HEADER_SIZE = 4 * 4
 
-    _DEFAULT_HEADER_SIZE = 2 * 4
-    _HEADER_SIZES = {
-        b'$PSP': 4 * 4,
-        b'$PL2': 4 * 4,
-        b'$BHD': 4 * 4,
-        b'$BL2': 4 * 4,
-    }
+    ENTRY_CLASS = DirectoryEntry
+    ENTRY_SIZE = DirectoryEntry.ENTRY_SIZE
+    FILE_CLASS = File
 
-    _DEFAULT_ENTRY_SIZE = 2 * 4
-    _ENTRY_SIZES = {
-        b'$PSP': 4 * 4,
-        b'$PL2': 4 * 4,
-        b'$BHD': 4 * 6,
-        b'$BL2': 4 * 6,
-    }
+    # all directories by offset in rom
+    # todo: what if we have multi-ROM? then two ROMs share this singleton!
+    directories_by_offset = {}
 
-    _ENTRY_TYPES_SECONDARY_DIR = [0x40, 0x48, 0x49, 0x4a, 0x70]
-    _ENTRY_TYPES_PUBKEY = [0x0, 0x9, 0xa, 0x5, 0xd]
+    class ParseError(Exception):
+        pass
 
-    def __init__(self, parent_rom, rom_address: int, type_: str, psptool, zen_generation='unknown'):
+    @classmethod
+    def bios_directory_class(cls):
+        return BiosDirectory
+
+    @classmethod
+    def create_directories_if_not_exist(cls, offset, fet) -> List['Directory']:
+        # Recursively return or create and return found directories
+        if offset in cls.directories_by_offset:
+            return [cls.directories_by_offset[offset]]
+        else:
+            # 1. Create the immediate directory in front of us
+            created_directories = []
+            directory = cls.from_offset(fet, offset)
+            cls.directories_by_offset[offset] = directory
+            created_directories.append(directory)
+
+            # 2. Recursively add secondary directories referenced by the just created directory, if applicable
+            for secondary_directory_offset in directory.secondary_directory_offsets:
+                secondary_directories = cls.create_directories_if_not_exist(secondary_directory_offset, fet)
+                created_directories += secondary_directories
+
+            # 3. Recursively add tertiary directories (double references introduced in Zen 4), if applicable
+            for tertiary_directory_offset in directory.tertiary_directory_offsets:
+                directory_body = fet.rom.get_bytes(tertiary_directory_offset + 16, 8)
+                actual_tertiary_offset = int.from_bytes(directory_body[:4], 'little')
+                # Resolve one more indirection
+                tertiary_directories = cls.create_directories_if_not_exist(actual_tertiary_offset, fet)
+                created_directories += tertiary_directories
+
+            return created_directories
+
+    @classmethod
+    def from_offset(cls, fet, rom_offset):
+        rom_offset &= fet.rom.addr_mask
+        magic = fet.rom.get_bytes(rom_offset, 4)
+
+        if magic in cls.DIRECTORY_MAGICS:
+            return cls(fet.rom, rom_offset, fet.psptool)
+        elif magic in BiosDirectory.DIRECTORY_MAGICS:
+            return cls.bios_directory_class()(fet.rom, rom_offset, fet.psptool)
+        else:
+            raise Directory.ParseError
+
+    def __init__(self, parent_rom, offset: int, psptool, zen_generation=None):
+        # todo: incorporate zen generation from combo dirs
         self.rom = parent_rom
-
-        # The offset of this directory as specified in the FET
-        self.buffer_offset = rom_address
-
+        self.buffer_offset = offset
         self.psptool = psptool
-        self.checksum = None
-        self._count = None
-
         self.zen_generation = zen_generation
+        self.bios_directory_type = BiosDirectory
 
         # a directory must parse itself before it knows its size and can initialize its buffer
-        self._parse_header()
+        self._count = int.from_bytes(self.rom[self.buffer_offset + 8: self.buffer_offset + 12], 'little')
+        self.magic = self.rom.get_bytes(self.buffer_offset, 4)
+        assert self.magic in self.DIRECTORY_MAGICS
+        self.reserved = self.rom.get_bytes(self.buffer_offset + 12, 4)
+        self.header = NestedBuffer(self, self.HEADER_SIZE)
+        self.body = NestedBuffer(self, self.ENTRY_SIZE * self.count, buffer_offset=self.HEADER_SIZE)
+        self.buffer_size = len(self.header) + len(self.body)
+        self.checksum = NestedBuffer(self, 4, 4)
 
+        # now initialize the buffer
         super().__init__(self.rom, self.buffer_size, buffer_offset=self.buffer_offset)
 
-        self.type = type_
-        self.entries: List[Entry] = []
+        self.entries: List[DirectoryEntry] = []
+        self.files: List[File] = []
 
-        self._entry_size = self._ENTRY_SIZES.get(self.magic, self._DEFAULT_ENTRY_SIZE)
+        # parse entries
+        for entry_bytes in self.body.get_chunks(self.ENTRY_SIZE):
+            self.entries.append(self.ENTRY_CLASS(entry_bytes, self))
 
-        self._parse_entries()
+        # create/link files
+        for entry in self.entries:
+            file = self.FILE_CLASS.create_file_if_not_exists(self, entry)
+            if file is not None:
+                self.files.append(file)
 
         # check entries for a link to a secondary directory (i.e. a continuation of this directory)
-        self.secondary_directory_addresses = []
+        self.secondary_directory_offsets = []
+        self.tertiary_directory_offsets = []
+
         for entry in self.entries:
-            if entry.type in self._ENTRY_TYPES_SECONDARY_DIR:
-                # psptool.ph.print_warning(f"Secondary dir at 0x{entry.buffer_offset:x}")
-                self.secondary_directory_addresses.append(entry.buffer_offset)
+            if entry.type in SECONDARY_DIRECTORY_ENTRY_TYPES:
+                self.secondary_directory_offsets.append(entry.file_offset())
+            elif entry.type in TERTIARY_DIRECTORY_ENTRY_TYPES:
+                self.tertiary_directory_offsets.append(entry.file_offset())
 
         self.verify_checksum()
 
     def __repr__(self):
-        return f'Directory(address={hex(self.get_address())}, type={self.type}, magic={self.magic}, count={self.count})'
+        return f'{self.__class__.__name__}(address={hex(self.get_address())}, magic={self.magic}, count={self.count})'
 
     @property
     def count(self):
@@ -103,69 +146,9 @@ class Directory(NestedBuffer):
     def address_mode(self):
         rsvd = struct.unpack('=L', self.reserved)[0]
         return (rsvd & 0x60000000) >> 29 if rsvd != 0 else None
-
-    def _parse_header(self):
-        # ugly to do this manually, but we do not know our size yet
-        self._count = int.from_bytes(
-            self.rom[self.buffer_offset + 8: self.buffer_offset + 12],
-            'little'
-        )
-        self.magic = self.rom.get_bytes(self.buffer_offset, 4)
-        self.reserved = self.rom.get_bytes(self.buffer_offset + 12, 4)
-
-        self.header = NestedBuffer(
-            self,
-            self._HEADER_SIZES.get(self.magic, self._DEFAULT_HEADER_SIZE)
-        )
-        self.body = NestedBuffer(
-            self,
-            self._ENTRY_SIZES.get(self.magic, self._DEFAULT_ENTRY_SIZE) * self._count,
-            buffer_offset=self._HEADER_SIZES.get(self.magic, self._DEFAULT_HEADER_SIZE)
-        )
-
-        self.buffer_size = len(self.header) + len(self.body)
-        self.checksum = NestedBuffer(self, 4, 4)
-
-    def _parse_entries(self):
-        self.entries = []
-
-        for entry_bytes in self.body.get_chunks(self._entry_size):
-            entry_fields = {}
-            for key, word in zip(self.ENTRY_FIELDS, chunker(entry_bytes, 4)):
-                entry_fields[key] = struct.unpack('<I', word)[0]
-
-            entry_fields['type_flags'] = entry_fields['type'] >> 8
-            entry_fields['type'] = entry_fields['type'] & 0xFFFF
-
-            entry_fields['offset'] &= self.rom.addr_mask
-            destination = None
-
-            if entry_fields['type'] in BIOS_ENTRY_TYPES:
-                destination = struct.unpack('<Q', entry_bytes[0x10:0x18])[0]
-
-            # Seen on the Lenovo X13 for the first time
-            if self.address_mode == 2:
-                entry_fields['offset'] += self.buffer_offset
-
-            try:
-                entry = Entry.from_fields(self, self.parent_buffer,
-                                          entry_fields['type'],
-                                          entry_fields['type_flags'],
-                                          entry_fields['size'],
-                                          entry_fields['offset'],
-                                          self.rom,
-                                          self.psptool,
-                                          destination=destination)
-            except:
-                self.psptool.ph.print_warning(f"Entry of {self} at {hex(entry_fields['offset'])} cannot be parsed")
-                continue
-
-            for existing_entry in self.rom.unique_entries:
-                if entry == existing_entry:
-                    existing_entry.references.append(self)
-
-            self.entries.append(entry)
-            self.rom.unique_entries.add(entry)
+    # todo: do we need to still consider the address_mode somewhere?
+    #   at the moment we seem to be running fine by checking entry.rsv0 & (1 << 30) to figure out if we need
+    #   directory-relative or absolute addressing
 
     def verify_checksum(self):
         data = self[0x8:]
@@ -173,13 +156,13 @@ class Directory(NestedBuffer):
         calculated_checksum = fletcher32(data)
         if checksum == calculated_checksum:
             return
-        self.psptool.ph.print_warning(f"Could not verify checksum for directory {self}")
+        self.psptool.ph.print_warning(f"Could not verify fletcher checksum for directory {self}")
 
     def update_checksum(self):
         data = self[0x8:]  # checksum is calculated from after the checksum field in the header
         self.checksum.set_bytes(0, 4, fletcher32(data))
 
-    def update_entry_fields(self, entry: Entry, type_, size, offset):
+    def update_entry_fields(self, entry: File, type_, size, offset):
         entry_index = None
         for index, my_entry in enumerate(self.entries):
             if my_entry.type == entry.type:
@@ -198,3 +181,11 @@ class Directory(NestedBuffer):
         self.body.set_bytes(self._entry_size * entry_index + 8, 4, struct.pack('<I', offset))
 
         self.update_checksum()
+
+
+class BiosDirectory(Directory):
+    DIRECTORY_MAGICS = [b'$BHD', b'$BL2']
+
+    ENTRY_CLASS = BiosDirectoryEntry
+    ENTRY_SIZE = BiosDirectoryEntry.ENTRY_SIZE
+    FILE_CLASS = BiosFile

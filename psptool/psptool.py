@@ -17,7 +17,9 @@
 from prettytable import PrettyTable
 import sys, json
 
-from .entry import Entry, HeaderEntry, PubkeyEntry
+from .file import File
+from .header_file import HeaderFile
+from .pubkey_file import PubkeyFile
 from .blob import Blob
 from .utils import PrintHelper
 from .cert_tree import CertificateTree
@@ -30,18 +32,16 @@ class PSPTool:
         with open(filename, 'rb') as f:
             file_bytes = bytearray(f.read())
 
-        pt = PSPTool(file_bytes, verbose=verbose)
-        pt.filename = filename
+        pt = PSPTool(file_bytes, verbose=verbose, filename=filename)
 
         return pt
 
-    def __init__(self, rom_bytes, verbose=False):
+    def __init__(self, rom_bytes, verbose=False, filename=None):
+        self.filename = filename
         self.ph = PrintHelper(verbose)
 
         self.blob = Blob(rom_bytes, len(rom_bytes), self)
         self.cert_tree = CertificateTree.from_blob(self.blob, self)
-
-        self.filename = None
 
     def __repr__(self):
         if self.filename is not None:
@@ -69,15 +69,14 @@ class PSPTool:
             print(t)
 
             for index, directory in enumerate(rom.directories):
-                t = PrettyTable(['', 'Directory', 'Addr', 'Type', 'Generation', 'Magic', 'Secondary Directory'])
+                t = PrettyTable(['', 'Directory', 'Addr', 'Generation', 'Magic', 'Secondary Directory'])
                 t.add_row([
                     '',
                     index,
                     hex(directory.get_address()),
-                    directory.type,
                     directory.zen_generation,
                     directory.magic.decode('utf-8', 'backslashreplace'),
-                    ', '.join([hex(sda) for sda in directory.secondary_directory_addresses])
+                    ', '.join([hex(sda) for sda in directory.secondary_directory_offsets])
                 ])
 
                 print(t)
@@ -87,14 +86,14 @@ class PSPTool:
 
     def ls_dir(self, fet,  directory_index, verbose=False):
         directory = fet.directories[directory_index]
-        self.ls_entries(entries=directory.entries, verbose=verbose)
+        self.ls_files(files=directory.files, verbose=verbose)
 
-    def ls_entries(self, entries=None, verbose=False):
+    def ls_files(self, files=None, verbose=False):
         # list all entries of all directories by default (sorted by their address)
-        if entries is None:
-            entries = sorted(self.blob.unique_entries())
+        if files is None:
+            files = sorted(self.blob.unique_files())
 
-        basic_fields = ['', ' ', 'Entry', 'Address', 'Size', 'Type', 'Magic/ID', 'Version', 'Info']
+        basic_fields = ['', ' ', 'Entry', 'Address', 'Size', 'Type', 'Magic/ID', 'File Version', 'File Info']
         verbose_fields = ['type_flags', 'MD5', 'size_signed', 'size_full', 'size_packed', 'load_addr']
 
         t = PrettyTable(basic_fields + verbose_fields)
@@ -102,58 +101,64 @@ class PSPTool:
 
         # TODO: Skip this whole mess and introduce strict and non_strict mode
         #  strict mode should parse everything but give inconsistency errors like sha256_inconsistent
-        entry: Entry
-        for index, entry in enumerate(entries):
+        file: File
+        for index, file in enumerate(files):
             info = []
-            if entry.compressed:
+            if file.compressed:
                 info.append('compressed')
-            if entry.signed:
+            if file.is_signed:
                 try:
-                    if entry.signed_entity.is_verified():
-                        info.append(f'verified({entry.get_readable_signed_by()})')
+                    if file.signed_entity.is_verified():
+                        info.append(f'verified({file.get_readable_signed_by()})')
                     else:
-                        info.append(f'veri-failed({entry.get_readable_signed_by()})')
+                        info.append(f'veri-failed({file.get_readable_signed_by()})')
                 except errors.NoCertifyingKey:
-                    info.append(f'key_missing({entry.signed_entity.certifying_id.as_string()[:4]})')
+                    info.append(f'key_missing({file.signed_entity.certifying_id.as_string()[:4]})')
                 except errors.SignatureInvalid:
-                    info.append(f'invalid_sig({entry.get_readable_signed_by()})')
-            if entry.has_sha256_checksum:
-                if entry.sha256_verified:
-                    info.append(f'sha256_ok')
-                else:
-                    info.append(f'sha256_inconsistent')
-            if entry.is_legacy:
+                    info.append(f'invalid_sig({file.get_readable_signed_by()})')
+            if file.is_legacy:
                 info.append('legacy_header')
-            if entry.encrypted:
+            if file.encrypted:
                 info.append('encrypted')
-            if type(entry) == HeaderEntry and entry.inline_keys:
-                inline_keys = ', '.join(map(lambda k: k.get_readable_magic(), entry.inline_keys))
-                info.append(f'inline_keys({inline_keys})')
-            if type(entry) == PubkeyEntry:
-                info.append(entry.get_readable_key_usage())
-                if entry.get_readable_security_features():
-                    info.append(entry.get_readable_security_features())
+            if issubclass(type(file), HeaderFile):
+                if file.has_sha256_checksum:
+                    if file.verify_sha256():
+                        info.append(f'sha256_ok')
+                    else:
+                        info.append(f'sha256_inconsistent')
+                elif file.has_sha384_checksum:
+                    if file.verify_sha384():
+                        info.append(f'sha384_ok')
+                    else:
+                        info.append(f'sha384_inconsistent')
+                if file.inline_keys:
+                    inline_keys = ', '.join(map(lambda k: k.get_readable_magic(), file.inline_keys))
+                    info.append(f'inline_keys({inline_keys})')
+            if type(file) == PubkeyFile:
+                info.append(file.get_readable_key_usage())
+                if file.get_readable_security_features():
+                    info.append(file.get_readable_security_features())
 
             all_values = [
                 '',
                 '',
                 index,
-                hex(entry.get_address()),
-                hex(entry.buffer_size),
-                entry.get_readable_type(),
-                entry.get_readable_magic(),
-                entry.get_readable_version(),
+                hex(file.get_address()),
+                hex(file.buffer_size),
+                file.get_readable_type(),
+                file.get_readable_magic(),
+                file.get_readable_version(),
                 ', '.join(info),
-                hex(entry.type_flags),
-                entry.md5()[:4].upper()
+                '',  # hex(file.entry.type_flags) if 'entry' in file else '',
+                file.md5()[:4].upper()
             ]
 
-            if type(entry) is HeaderEntry:
+            if type(file) is HeaderFile:
                 all_values += [hex(v) for v in [
-                    entry.size_signed,
-                    entry.size_uncompressed,
-                    entry.rom_size,
-                    entry.load_addr
+                    file.size_signed,
+                    file.size_uncompressed,
+                    file.rom_size,
+                    file.load_addr
                 ]]
             else:
                 all_values += (4 * [''])
@@ -178,7 +183,7 @@ class PSPTool:
                     'address': directory.get_address(),
                     'directoryType': directory.type,
                     'magic': directory.magic.decode('utf-8', 'backslashreplace'),
-                    'secondaryAddresses': directory.secondary_directory_addresses
+                    'secondaryAddresses': directory.secondary_directory_offsets
                 }
 
                 entries = self.ls_dir_dict(rom, index, verbose=verbose)
@@ -188,49 +193,49 @@ class PSPTool:
 
     def ls_dir_dict(self, fet,  directory_index, verbose=False):
         directory = fet.directories[directory_index]
-        return self.ls_entries_dict(entries=directory.entries)
+        return self.ls_files_dict(files=directory.entries)
 
-    def ls_entries_dict(self, entries=None):
+    def ls_files_dict(self, files=None):
         # list all entries of all directories by default (sorted by their address)
-        if entries is None:
-            entries = sorted(self.rom.unique_entries)
+        if files is None:
+            files = sorted(self.rom.unique_files)
 
         out = []
-        for index, entry in enumerate(entries):
+        for index, file in enumerate(files):
             info = []
-            if entry.compressed:
+            if file.compressed:
                 info.append('compressed')
-            if entry.signed:
-                info.append(f'signed({entry.get_readable_signed_by()})')
+            if file.is_signed:
+                info.append(f'signed({file.get_readable_signed_by()})')
                 try:
-                    if entry.signed_entity.is_verified():
+                    if file.signed_entity.is_verified():
                         info.append('verified')
                 except errors.NoCertifyingKey:
                     info.append('no_key')
-            if entry.is_legacy:
+            if file.is_legacy:
                 info.append('legacy header')
-            if entry.encrypted:
+            if file.encrypted:
                 info.append('encrypted')
 
             all_values = {
                 'index': index,
-                'address': entry.get_address(),
-                'size': entry.buffer_size,
-                'sectionType': entry.get_readable_type(),
-                'magic': entry.get_readable_magic(),
-                'version': entry.get_readable_version(),
+                'address': file.get_address(),
+                'size': file.buffer_size,
+                'sectionType': file.get_readable_type(),
+                'magic': file.get_readable_magic(),
+                'version': file.get_readable_version(),
                 'info': info,
-                'md5': entry.md5()[:4].upper()
+                'md5': file.md5()[:4].upper()
             }
 
-            if entry.get_readable_type() == "BIOS":
-                all_values['destinationAddress'] = entry.get_readable_destination_address()
+            if file.get_readable_type() == "BIOS":
+                all_values['destinationAddress'] = file.get_readable_destination_address()
 
-            if type(entry) is HeaderEntry:
+            if issubclass(type(file), HeaderFile):
                 sizes = {
-                    'signed': entry.size_signed,
-                    'uncompressed': entry.size_uncompressed,
-                    'packed': entry.rom_size
+                    'signed': file.size_signed,
+                    'uncompressed': file.size_uncompressed,
+                    'packed': file.rom_size
                 }
                 all_values['sizes'] = sizes
 
@@ -246,8 +251,8 @@ class PSPTool:
 
         rom_count = len(self.blob.roms)
         directory_count = sum([len(rom.directories) for rom in self.blob.roms])
-        unique_entries_count = len(self.blob.unique_entries())
+        unique_files_count = len(self.blob.unique_files())
 
         print(f'{rom_count=}')
         print(f'{directory_count=}')
-        print(f'{unique_entries_count=}')
+        print(f'{unique_files_count=}')
