@@ -177,11 +177,10 @@ class PSPTool:
         # todo: add notion of Multi-ROMs
         for rom in self.blob.roms:
             for index, directory in enumerate(rom.directories):
-                PrettyTable(['Directory', 'Addr', 'Type', 'Magic', 'Secondary Directory'])
+                PrettyTable(['Directory', 'Addr', 'Magic', 'Secondary Directory'])
                 d = {
                     'directory': index,
                     'address': directory.get_address(),
-                    'directoryType': directory.type,
                     'magic': directory.magic.decode('utf-8', 'backslashreplace'),
                     'secondaryAddresses': directory.secondary_directory_offsets
                 }
@@ -193,7 +192,7 @@ class PSPTool:
 
     def ls_dir_dict(self, fet,  directory_index, verbose=False):
         directory = fet.directories[directory_index]
-        return self.ls_files_dict(files=directory.entries)
+        return self.ls_files_dict(files=directory.files)
 
     def ls_files_dict(self, files=None):
         # list all entries of all directories by default (sorted by their address)
