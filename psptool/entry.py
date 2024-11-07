@@ -455,6 +455,11 @@ class KeyStoreEntryHeader(NestedBuffer):
 
     HEADER_SIZE = 0x100
 
+    def get_pem_encoded(self):
+        return b'-----BEGIN PUBLIC KEY-----\n' + \
+            b'\n'.join(chunker(b64encode(self.get_der_encoded()), 64)) + \
+            b'\n-----END PUBLIC KEY-----\n'
+
     def __init__(self, entry):
         super().__init__(entry, self.HEADER_SIZE)
 
