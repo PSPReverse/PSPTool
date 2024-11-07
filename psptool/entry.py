@@ -665,7 +665,7 @@ class PubkeyEntry(Entry):
     HEADER_LEN = 0x40
 
     def get_der_encoded(self):
-        if struct.unpack('>I', self.pubexp)[0] != 65537:
+        if self.pubexp != 65537:
             raise NotImplementedError('Only an exponent of 65537 is supported.')
         if len(self.modulus) == 0x100:
             der_encoding = b'\x30\x82\x01\x22\x30\x0D\x06\x09\x2A\x86\x48\x86\xF7\x0D\x01\x01\x01\x05\x00\x03\x82\x01' \
