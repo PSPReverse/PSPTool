@@ -667,12 +667,12 @@ class PubkeyEntry(Entry):
     def get_der_encoded(self):
         if self.pubexp != 65537:
             raise NotImplementedError('Only an exponent of 65537 is supported.')
-        if len(self.modulus) == 0x100:
+        if len(self.get_modulus_bytes()) == 0x100:
             der_encoding = b'\x30\x82\x01\x22\x30\x0D\x06\x09\x2A\x86\x48\x86\xF7\x0D\x01\x01\x01\x05\x00\x03\x82\x01' \
-                           b'\x0F\x00\x30\x82\x01\x0A\x02\x82\x01\x01\x00' + self.modulus + b'\x02\x03\x01\x00\x01'
-        elif len(self.modulus) == 0x200:
+                           b'\x0F\x00\x30\x82\x01\x0A\x02\x82\x01\x01\x00' + self.get_modulus_bytes() + b'\x02\x03\x01\x00\x01'
+        elif len(self.get_modulus_bytes()) == 0x200:
             der_encoding = b'\x30\x82\x02\x22\x30\x0D\x06\x09\x2A\x86\x48\x86\xF7\x0D\x01\x01\x01\x05\x00\x03\x82\x02' \
-                           b'\x0F\x00\x30\x82\x02\x0A\x02\x82\x02\x01\x00' + self.modulus + b'\x02\x03\x01\x00\x01'
+                           b'\x0F\x00\x30\x82\x02\x0A\x02\x82\x02\x01\x00' + self.get_modulus_bytes() + b'\x02\x03\x01\x00\x01'
         else:
             return None
         return der_encoding
@@ -781,6 +781,9 @@ class PubkeyEntry(Entry):
 
     def get_readable_version(self):
         return str(self.version)
+
+    def get_modulus_bytes(self):
+        return self._modulus.get_bytes()
 
     def get_readable_key_usage(self):
         if self.key_usage == 0:
