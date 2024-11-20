@@ -66,15 +66,15 @@ def main():
         '', '']), action='store_true')
 
     action.add_argument('-X', '--extract-file', help='\n'.join([
-        'Extract one or more PSP firmware entries.',
+        'Extract one or more PSP firmware files.',
         '[-d idx [-e idx]] [-n] [-u] [-c] [-k] [-o outfile]',
         '',
         '-r idx:  specifies rom_index (default: 0)',
         '-d idx:  specifies directory_index (default: all directories)',
-        '-e idx:  specifies entry_index (default: all entries)',
-        '-n:      skip duplicate entries and extract unique entries only',
-        '-u:      uncompress compressed entries',
-        '-c:      try to decrypt entries',
+        '-e idx:  specifies file_index (default: all files)',
+        '-n:      skip duplicate files and extract unique files only',
+        '-u:      uncompress compressed files',
+        '-c:      try to decrypt files',
         '-k:      convert pubkeys into PEM format',
         '-o file: specifies outfile/outdir (default: stdout/{file}_extracted)',
         '', '']), action='store_true')
@@ -86,7 +86,7 @@ def main():
         '',
         '-r idx:  specifies rom_index (default: 0)',
         '-d idx:  specifies directory_index',
-        '-e idx:  specifies entry_index',
+        '-e idx:  specifies file_index',
         '-s file: specifies subfile (i.e. the new file contents)',
         '-o file: specifies outfile',
         '-p file: specifies file-stub (e.g. \'keys/id\') for the re-signing keys',
@@ -107,8 +107,8 @@ def main():
     output = None
 
     if args.extract_file:
-        if args.directory_index is not None and args.entry_index is not None:
-            file = psp.blob.roms[args.rom_index].directories[args.directory_index].entries[args.entry_index]
+        if args.directory_index is not None and args.file_index is not None:
+            file = psp.blob.roms[args.rom_index].directories[args.directory_index].files[args.file_index]
 
             if args.decompress:
                 if not file.compressed:
@@ -124,7 +124,7 @@ def main():
                 output = file.get_bytes()
 
         else:
-            if args.entry_index is None:  # if neither directory_index nor entry_index are specified
+            if args.file_index is None:  # if neither directory_index nor file_index are specified
                 if args.directory_index is not None:
                     directories = [psp.blob.roms[args.rom_index].directories[args.directory_index]]
                 else:
@@ -133,7 +133,7 @@ def main():
                 if args.no_duplicates is False:
                     outdir = args.outfile or f'./{psp.filename}_extracted'
                     for dir_index, directory in enumerate(directories):
-                        for entry_index, file in enumerate(directory.entries):
+                        for file_index, file in enumerate(directory.files):
                             if args.decompress and type(file) is HeaderFile:
                                 out_bytes = file.get_signed_bytes()
                             elif args.decrypt and type(file) is HeaderFile:
@@ -143,14 +143,14 @@ def main():
                             else:
                                 out_bytes = file.get_bytes()
 
-                            outpath = outdir + '/d%.2d_e%.2d_%s' % (dir_index, entry_index, file.get_readable_type())
+                            outpath = outdir + '/d%.2d_e%.2d_%s' % (dir_index, file_index, file.get_readable_type())
                             if type(file) is HeaderFile:
                                 outpath += f'_{file.get_readable_version()}'
 
                             os.makedirs(os.path.dirname(outpath), exist_ok=True)
                             with open(outpath, 'wb') as f:
                                 f.write(out_bytes)
-                    ph.print_info(f"Extracted all entries to {outdir}")
+                    ph.print_info(f"Extracted all files to {outdir}")
                 else:  # no_duplicates is True
                     for file in psp.blob.roms[args.rom_index].unique_files:
                         if args.decompress and type(file) is HeaderFile:
@@ -175,8 +175,8 @@ def main():
                 parser.print_help(sys.stderr)
 
     elif args.replace_file:
-        if args.directory_index is not None and args.entry_index is not None and args.outfile is not None:
-            file = psp.blob.roms[args.rom_index].directories[args.directory_index].entries[args.entry_index]
+        if args.directory_index is not None and args.file_index is not None and args.outfile is not None:
+            file = psp.blob.roms[args.rom_index].directories[args.directory_index].files[args.file_index]
 
             # Substituting an file is actually optional to allow plain re-signs
             if args.subfile is not None:
