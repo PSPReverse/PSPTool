@@ -22,6 +22,7 @@ from .utils import shannon
 from .utils import zlib_decompress, zlib_compress
 from .utils import decrypt
 from .utils import round_to_int
+from .utils import chunker
 from .crypto import KeyId, Signature, ReversedSignature, PrivateKey
 
 from enum import Enum
@@ -29,6 +30,8 @@ from enum import Enum
 from binascii import hexlify
 from math import ceil
 from hashlib import md5, sha256
+from base64 import b64encode
+
 
 BIOS_ENTRY_TYPES = [0x10062, 0x30062]
 
@@ -455,6 +458,7 @@ class KeyStoreEntryHeader(NestedBuffer):
 
     HEADER_SIZE = 0x100
 
+
     def __init__(self, entry):
         super().__init__(entry, self.HEADER_SIZE)
 
@@ -660,6 +664,24 @@ class PubkeyEntry(Entry):
 
     HEADER_LEN = 0x40
 
+    def get_der_encoded(self):
+        if self.pubexp != 65537:
+            raise NotImplementedError('Only an exponent of 65537 is supported.')
+        if len(self.get_modulus_bytes()) == 0x100:
+            der_encoding = b'\x30\x82\x01\x22\x30\x0D\x06\x09\x2A\x86\x48\x86\xF7\x0D\x01\x01\x01\x05\x00\x03\x82\x01' \
+                           b'\x0F\x00\x30\x82\x01\x0A\x02\x82\x01\x01\x00' + self.get_modulus_bytes() + b'\x02\x03\x01\x00\x01'
+        elif len(self.get_modulus_bytes()) == 0x200:
+            der_encoding = b'\x30\x82\x02\x22\x30\x0D\x06\x09\x2A\x86\x48\x86\xF7\x0D\x01\x01\x01\x05\x00\x03\x82\x02' \
+                           b'\x0F\x00\x30\x82\x02\x0A\x02\x82\x02\x01\x00' + self.get_modulus_bytes() + b'\x02\x03\x01\x00\x01'
+        else:
+            return None
+        return der_encoding
+
+    def get_pem_encoded(self):
+        return b'-----BEGIN PUBLIC KEY-----\n' + \
+            b'\n'.join(chunker(b64encode(self.get_der_encoded()), 64)) + \
+            b'\n-----END PUBLIC KEY-----\n'
+
     def _parse(self):
         """ SEV spec B.1 """
 
@@ -759,6 +781,9 @@ class PubkeyEntry(Entry):
 
     def get_readable_version(self):
         return str(self.version)
+
+    def get_modulus_bytes(self):
+        return self._modulus.get_bytes()
 
     def get_readable_key_usage(self):
         if self.key_usage == 0:
