@@ -165,6 +165,7 @@ class File(NestedBuffer):
         if entry.type in cls.NO_SIZE_ENTRY_TYPES:
             entry.size = 0
 
+        assert entry.file_offset() < len(parent_directory.rom), "File offset overflows ROM bounds!"
         file_args = [parent_directory, parent_buffer, entry.file_offset(), entry.type, entry.size, blob, psptool]
 
         from .pubkey_file import PubkeyFile
@@ -255,8 +256,6 @@ class File(NestedBuffer):
         return m.hexdigest()
 
     def move_buffer(self, new_address, size):
-        # todo: update this so it works with the new Directory - Entry - File notion
-        assert False, "Update this so it works with the new Directory - Entry - File notion"
         current_address = self.get_address()
         move_offset = new_address - current_address
         self.buffer_offset += move_offset

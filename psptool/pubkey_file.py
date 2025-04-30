@@ -59,6 +59,9 @@ class PubkeyFile(File):
         self._modulus = NestedBuffer(self.crypto_material, self.modulus_size, self.pubexp_size)
         assert self.pubexp == 0x10001
 
+        self.has_sha256_checksum = False
+        self.has_sha384_checksum = False
+
         # signature
         if self.is_signed:
             assert self.signature_size in {0x100, 0x200}

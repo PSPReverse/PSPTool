@@ -20,19 +20,14 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from directory import Directory
 
+from .utils import NestedBuffer
 
-class DirectoryEntry:
+
+class DirectoryEntry(NestedBuffer):
     ENTRY_SIZE = 4 * 4
 
-    def __init__(self, entry_bytes, parent_directory: 'Directory'):
-        assert len(entry_bytes) == self.ENTRY_SIZE
-
-        self.type = struct.unpack('<H', entry_bytes[0:2])[0]
-        self.type_flags = struct.unpack('<H', entry_bytes[2:4])[0]
-        self.size = struct.unpack('<I', entry_bytes[4:8])[0]
-        self.offset = struct.unpack('<I', entry_bytes[8:12])[0]
-        self.rsv0 = struct.unpack('<I', entry_bytes[12:16])[0]
-
+    def __init__(self, parent_directory: 'Directory', entry_offset):
+        super().__init__(parent_directory.body, self.ENTRY_SIZE, entry_offset)
         self.parent_directory = parent_directory
 
     def __repr__(self):
@@ -44,14 +39,58 @@ class DirectoryEntry:
             return self.parent_directory.buffer_offset + self.offset
         else:  # old style
             return self.offset & self.parent_directory.rom.addr_mask
+    
+    @property
+    def type(self):
+        return struct.unpack('<H', self[0:2])[0]
+
+    @type.setter
+    def type(self, value):
+        self.set_bytes(0, 2, struct.pack('<H', value))
+
+    @property
+    def type_flags(self):
+        return struct.unpack('<H', self[2:4])[0]
+
+    @type_flags.setter
+    def type_flags(self, value):
+        self.set_bytes(2, 2, struct.pack('<H', value))
+
+    @property
+    def size(self):
+        return struct.unpack('<I', self[4:8])[0]
+
+    @size.setter
+    def size(self, value):
+        self.set_bytes(4, 4, struct.pack('<I', value))
+
+    @property
+    def offset(self):
+        return struct.unpack('<I', self[8:12])[0]
+
+    @offset.setter
+    def offset(self, value):
+        self.set_bytes(8, 4, struct.pack('<I', value))
+
+    @property
+    def rsv0(self):
+        return struct.unpack('<I', self[12:16])[0]
+
+    @rsv0.setter
+    def rsv0(self, value):
+        self.set_bytes(12, 4, struct.pack('<I', value))
 
 
 class BiosDirectoryEntry(DirectoryEntry):
     ENTRY_SIZE = 4 * 6
 
-    def __init__(self, entry_bytes, parent_directory: 'Directory'):
-        super().__init__(entry_bytes, parent_directory)
-        self.destination = struct.unpack('<Q', entry_bytes[0x10:0x18])[0]
-
     def __repr__(self):
         return super().__repr__()[:-1] + f', {self.destination=:#x})'
+
+    @property
+    def destination(self):
+        return struct.unpack('<Q', self[16:24])[0]
+
+    @destination.setter
+    def destination(self, value):
+        self.set_bytes(16, 8, struct.pack('<Q', value))

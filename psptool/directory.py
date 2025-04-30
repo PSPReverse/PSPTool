@@ -106,8 +106,10 @@ class Directory(NestedBuffer):
         self.files: List[File] = []
 
         # parse entries
-        for entry_bytes in self.body.get_chunks(self.ENTRY_SIZE):
-            self.entries.append(self.ENTRY_CLASS(entry_bytes, self))
+        entry_size = self.ENTRY_CLASS.ENTRY_SIZE
+        assert len(self.body) % entry_size == 0, "Directory size not a multiple of entry size!"
+        for entry_offset in range(0, len(self.body), entry_size):
+            self.entries.append(self.ENTRY_CLASS(self, entry_offset))
 
         # create/link files
         for entry in self.entries:
@@ -162,24 +164,23 @@ class Directory(NestedBuffer):
         data = self[0x8:]  # checksum is calculated from after the checksum field in the header
         self.checksum.set_bytes(0, 4, fletcher32(data))
 
-    def update_entry_fields(self, entry: File, type_, size, offset):
-        entry_index = None
+    def update_entry_fields(self, file: File, type_, size, offset):
+        # 1. Find respective Entry for a given File
+        entry = None
         for index, my_entry in enumerate(self.entries):
-            if my_entry.type == entry.type:
-                entry_index = index
+            # We assume that each directory has at most one entry of a given type
+            if my_entry.type == file.type:
+                entry = my_entry
                 break
+        assert(entry is not None)
 
-        assert(entry_index is not None)
-
-        # apparently this masking is still needed for the PSP to parse stuff correctly
-        offset |= 0xFF000000
-
-        # update type, size, offset (rsv0 (nor rsv1 nor rsv2 in $BHD/$BLD directories))
-        self.body.set_bytes(self._entry_size * entry_index + 0, 2, struct.pack('<H', type_))
+        # 2. Update fields
+        entry.type = type_
+        entry.size = size
+        entry.offset = offset
         # todo: allow updating the address_mode which consists of two bytes right here
-        self.body.set_bytes(self._entry_size * entry_index + 4, 4, struct.pack('<I', size))
-        self.body.set_bytes(self._entry_size * entry_index + 8, 4, struct.pack('<I', offset))
 
+        # 3. Update checksum
         self.update_checksum()
 
 
