@@ -85,7 +85,7 @@ class Fet(NestedBuffer):
                     for dir_ in dirs:
                         if dir_ not in self.directories:
                             self.directories.append(dir_)
-            elif dir_magic == b'$PSP':
+            elif dir_magic == b'$PSP' or dir_magic == b'$BHD':
                 dirs = Directory.create_directories_if_not_exist(rom_addr, self)
                 for dir_ in dirs:
                     if dir_ not in self.directories:
