@@ -28,7 +28,8 @@ from .pubkey_file import PubkeyFile, InlinePubkeyFile
 
 class Blob(NestedBuffer):
     _FIRMWARE_ENTRY_MAGIC = b'\xAA\x55\xAA\x55'
-
+    # All structures per Rom must be in 16MB windows
+    _MAX_PAGE_SIZE = 16 * 1024 * 1024
     class NoFirmwareEntryTableError(Exception):
         pass
 
@@ -60,12 +61,13 @@ class Blob(NestedBuffer):
                 if fet_location < fet_offset:
                     # would lead to Blob underflow
                     continue
-                if fet_location - fet_offset + rom_size > self.buffer_size:
+                rom_page = int(fet_location / self._MAX_PAGE_SIZE)
+                if fet_location - fet_offset + rom_size - rom_page * self._MAX_PAGE_SIZE > self.buffer_size:
                     # would lead to Blob overflow
                     continue
                 try:
                     rom_offset = fet_location - fet_offset  # e.g. 0x20800 - 0x20000 = 0x0800
-                    potential_rom = Rom(self, rom_size, rom_offset, fet_offset, psptool)
+                    potential_rom = Rom(self, min(rom_size, self._MAX_PAGE_SIZE), rom_offset, fet_offset, psptool)
                     self.roms.append(potential_rom)
                     fet_parsed = True
                     break  # found correct fet_offset!
