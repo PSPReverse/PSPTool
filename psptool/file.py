@@ -30,10 +30,8 @@ if TYPE_CHECKING:
     from .directory import Directory
     from .entry import DirectoryEntry
 
-BIOS_ENTRY_TYPES = [0x10062, 0x30062]
 SECONDARY_DIRECTORY_ENTRY_TYPES = [0x40, 0x49, 0x70]
 TERTIARY_DIRECTORY_ENTRY_TYPES = [0x48, 0x4a]
-
 
 class File(NestedBuffer):
     # all files by offset
@@ -254,7 +252,7 @@ class File(NestedBuffer):
         pass
 
     def get_readable_type(self):
-        if self.type in BIOS_ENTRY_TYPES:
+        if self.type == 0x62:
             return "BIOS"
         if self.type in self.DIRECTORY_ENTRY_TYPES:
             return f'{self.DIRECTORY_ENTRY_TYPES[self.type]}~{hex(self.type)}'
