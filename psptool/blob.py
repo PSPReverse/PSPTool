@@ -121,6 +121,9 @@ class Blob(NestedBuffer):
         for m in re.finditer(b'\xff\xff\xff\xff' + self._FIRMWARE_ENTRY_MAGIC, self.get_buffer()):
             fet_offset = m.start() + 4
             yield fet_offset
+        for m in re.finditer(b'\x00\x00\x00\x00' + self._FIRMWARE_ENTRY_MAGIC, self.get_buffer()):
+            fet_offset = m.start() + 4
+            yield fet_offset
 
     def _find_inline_pubkeys(self, fp):
 
