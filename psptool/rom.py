@@ -29,27 +29,28 @@ class Rom(NestedBuffer):
         m = re.compile(b"AGESA!..\x00.*?\x00")
         res = m.findall(self.get_bytes())
 
-        if not res:
-            return 'AGESA_UNKNOWN'
-        else:
-            res = sole(set(res), assert_msg=f"Found conflicting AGESA version strings: {res}!")
-
-        return str(re.sub(b'\x00', b' ', res).strip().decode("ascii"))
-
-        # # We are only interested in different agesa versions
-        # res = set(res)
-        # res = list(res)
-        #
-        # # Some Images contain actually two ROM images. I.e. one for Naples and
-        # # one for Rome. Both will contain a valid FET which needs to be parsed.
-        # if len(res) == 2:
-        #     self.dual_rom = True
-        #     self.agesa_version = str(re.sub(b'\x00', b' ', res[0]).strip().decode("ascii"))
-        #     self.agesa_version_second = str(re.sub(b'\x00', b' ', res[1]).strip().decode("ascii"))
-        # elif len(res) == 1:
-        #     self.agesa_version = str(re.sub(b'\x00', b' ', res[0]).strip().decode("ascii"))
+        # if not res:
+        #     return 'AGESA_UNKNOWN'
         # else:
-        #     self.agesa_version = str("UNKNOWN")
+        #     res = sole(set(res), assert_msg=f"Found conflicting AGESA version strings: {res}!")
+
+        # return str(re.sub(b'\x00', b' ', res).strip().decode("ascii"))
+
+        # We are only interested in different agesa versions
+        res = set(res)
+        res = list(res)
+
+        # Some Images contain actually two ROM images. I.e. one for Naples and
+        # one for Rome. Both will contain a valid FET which needs to be parsed.
+        if len(res) == 2:
+            self.dual_rom = True
+            self.agesa_version_second = str(re.sub(b'\x00', b' ', res[1]).strip().decode("ascii"))
+            return str(re.sub(b'\x00', b' ', res[0]).strip().decode("ascii"))
+        elif len(res) == 1:
+            return str(re.sub(b'\x00', b' ', res[0]).strip().decode("ascii"))
+        else:
+            return 'AGESA_UNKNOWN'
+
 
     def __repr__(self):
         return f'Rom({self.agesa_version=})'

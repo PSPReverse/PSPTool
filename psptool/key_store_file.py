@@ -35,7 +35,11 @@ class KeyStoreFile(HeaderFile):
 
         key_store_start = self.header.buffer_size
         key_store_size = self.header.body_size
-        self.key_store = KeyStore(self, key_store_size, buffer_offset=key_store_start)
+
+        if self.compressed:
+            self.key_store = KeyStore(bytearray(self.get_decrypted_decompressed_body()), self.size_uncompressed, buffer_offset=0)
+        else:
+            self.key_store = KeyStore(self, key_store_size, buffer_offset=key_store_start)
 
         signature_start = key_store_start + key_store_size
         signature_size = self.header.signature_size

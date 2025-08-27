@@ -17,6 +17,7 @@ import struct
 
 from .utils import NestedBuffer
 from .utils import shannon
+from .entry import BiosDirectoryEntry
 
 from enum import Enum
 
@@ -29,10 +30,8 @@ if TYPE_CHECKING:
     from .directory import Directory
     from .entry import DirectoryEntry
 
-BIOS_ENTRY_TYPES = [0x10062, 0x30062]
 SECONDARY_DIRECTORY_ENTRY_TYPES = [0x40, 0x49, 0x70]
 TERTIARY_DIRECTORY_ENTRY_TYPES = [0x48, 0x4a]
-
 
 class File(NestedBuffer):
     # all files by offset
@@ -151,8 +150,9 @@ class File(NestedBuffer):
 
     # Types known to have no PSP HDR
     # TODO: Find a better way to identify those entries
-    NO_HDR_ENTRY_TYPES = [0x4, 0xb, 0x21, 0x40, 0x70, 0x6, 0x61, 0x60, 0x68, 0x5f, 0x15f, 0x1a, 0x22, 0x63, 0x67,
-                          0x66, 0x62, 0x61, 0x7, 0x38, 0x46, 0x48, 0x4a, 0x54, 0x6d, 0x87]
+    NO_HDR_ENTRY_TYPES = [0x4, 0xb, 0x21, 0x40, 0x48, 0x49, 0x4a, 0x70, 0x6, 0x61, 0x60, 0x68, 0x5f,
+                          0x1a, 0x22, 0x63, 0x67, 0x66, 0x6d, 0x62, 0x61, 0x7, 0x38, 0x46, 0x54, 0x8d,
+                          0x69 ]
 
     NO_SIZE_ENTRY_TYPES = [0xb]
     KEY_STORE_TYPES = [0x50, 0x51]
@@ -166,7 +166,7 @@ class File(NestedBuffer):
             entry.size = 0
 
         assert entry.file_offset() < len(parent_directory.rom), "File offset overflows ROM bounds!"
-        file_args = [parent_directory, parent_buffer, entry.file_offset(), entry.type, entry.size, blob, psptool]
+        file_args = [parent_directory, parent_buffer, entry.file_offset(), entry, blob, psptool]
 
         from .pubkey_file import PubkeyFile
         from .key_store_file import KeyStoreFile
@@ -185,24 +185,48 @@ class File(NestedBuffer):
             psptool.ph.print_warning(f"ParseError from {entry}: \n  {e}")
             return None
 
-    def __init__(self, parent_directory, parent_buffer, offset, type_, size, blob, psptool):
-        try:
-            super().__init__(parent_buffer, size, buffer_offset=offset)
-        except AssertionError as e:
-            raise File.ParseError(e)
-
-        # TODO: Fix to reference of FET
+    def __init__(self, parent_directory, parent_buffer, offset, entry, blob, psptool):
         self.blob = blob
         self.psptool = psptool
-        self.type = type_
+        self.entry = entry
+        self.type = entry.type
+
+        if type(entry) == BiosDirectoryEntry:
+            self.compressed = (self.entry.type_flags >> 3) & 1
+        else:
+            self.compressed = False
+
+        if parent_buffer.buffer_size >= offset + entry.size:
+            try:
+                super().__init__(parent_buffer, entry.size, buffer_offset=offset)
+            except AssertionError as e:
+                raise File.ParseError(e)
+        else:
+            if self.compressed:
+                zlib_hdr = zlib_find_header(self.blob[offset:])
+                if zlib_hdr != -1:
+                    zlib_size = int.from_bytes(
+                        self.blob.get_bytes(offset + 0x14, 4),
+                        'little'
+                    )
+                    super().__init__(parent_buffer, zlib_hdr + zlib_size, buffer_offset=offset)
+                    self.size_uncompressed = entry.size
+                else:
+                    self.psptool.ph.print_warning("Entry compressed but no zlib header found")
+                    raise File.ParseError()
+                    return
+            else:
+                self.psptool.ph.print_warning("Entry size exceed parent buffer bounds")
+                raise File.ParseError()
+                return
+
+        self.encrypted = False
+        self.is_legacy = False
+        self.size_uncompressed = 0
 
         if parent_directory is not None:
             self.references = [parent_directory]
         self.parent_directory = parent_directory
-
-        self.compressed = False
-        self.encrypted = False
-        self.is_legacy = False
 
         self._parse()
 
@@ -228,7 +252,7 @@ class File(NestedBuffer):
         pass
 
     def get_readable_type(self):
-        if self.type in BIOS_ENTRY_TYPES:
+        if self.type == 0x62:
             return "BIOS"
         if self.type in self.DIRECTORY_ENTRY_TYPES:
             return f'{self.DIRECTORY_ENTRY_TYPES[self.type]}~{hex(self.type)}'
