@@ -81,7 +81,7 @@ class Fet(NestedBuffer):
                     combo_offset = result[0]
                     combo_zen_gen = result[1]
                     dir_magic = self.rom[combo_offset:combo_offset + 4]
-                    dirs = Directory.create_directories_if_not_exist(combo_offset, self)
+                    dirs = Directory.create_directories_if_not_exist(combo_offset, self, combo_zen_gen)
                     for dir_ in dirs:
                         if dir_ not in self.directories:
                             self.directories.append(dir_)

@@ -43,7 +43,7 @@ class Directory(NestedBuffer):
         return BiosDirectory
 
     @classmethod
-    def create_directories_if_not_exist(cls, offset, fet) -> List['Directory']:
+    def create_directories_if_not_exist(cls, offset, fet, zen_generation=None) -> List['Directory']:
         # Recursively return or create and return found directories
         if offset in cls.directories_by_offset:
             return [cls.directories_by_offset[offset]]
@@ -51,7 +51,7 @@ class Directory(NestedBuffer):
             # 1. Create the immediate directory in front of us
             created_directories = []
             try:
-                directory = cls.from_offset(fet, offset)
+                directory = cls.from_offset(fet, offset, zen_generation)
                 cls.directories_by_offset[offset] = directory
                 created_directories.append(directory)
             except Directory.ParseError as e:
@@ -65,7 +65,7 @@ class Directory(NestedBuffer):
 
             # 2. Recursively add secondary directories referenced by the just created directory, if applicable
             for secondary_directory_offset in directory.secondary_directory_offsets:
-                secondary_directories = cls.create_directories_if_not_exist(secondary_directory_offset, fet)
+                secondary_directories = cls.create_directories_if_not_exist(secondary_directory_offset, fet, zen_generation)
                 created_directories += secondary_directories
 
             # 3. Recursively add tertiary directories (double references introduced in Zen 4), if applicable
@@ -73,13 +73,13 @@ class Directory(NestedBuffer):
                 directory_body = fet.rom.get_bytes(tertiary_directory_offset + 16, 8)
                 actual_tertiary_offset = int.from_bytes(directory_body[:4], 'little')
                 # Resolve one more indirection
-                tertiary_directories = cls.create_directories_if_not_exist(actual_tertiary_offset, fet)
+                tertiary_directories = cls.create_directories_if_not_exist(actual_tertiary_offset, fet, zen_generation)
                 created_directories += tertiary_directories
 
             return created_directories
 
     @classmethod
-    def from_offset(cls, fet, rom_offset):
+    def from_offset(cls, fet, rom_offset, zen_generation=None):
         rom_offset &= fet.rom.addr_mask
         magic = fet.rom.get_bytes(rom_offset, 4)
 
@@ -87,9 +87,9 @@ class Directory(NestedBuffer):
             fet.psptool.ph.print_warning(f"Empty FET entry at ROM address 0x{rom_offset:x}")
             raise Directory.ParseError("Empty entry")
         if magic in cls.DIRECTORY_MAGICS:
-            return cls(fet.rom, rom_offset, fet.psptool)
+            return cls(fet.rom, rom_offset, fet.psptool, zen_generation)
         elif magic in BiosDirectory.DIRECTORY_MAGICS:
-            return cls.bios_directory_class()(fet.rom, rom_offset, fet.psptool)
+            return cls.bios_directory_class()(fet.rom, rom_offset, fet.psptool, zen_generation)
         else:
             fet.psptool.ph.print_warning(f"Unknown directory magic {magic} at offset 0x{rom_offset:x}")
             raise Directory.ParseError
