@@ -5,6 +5,7 @@ import io
 import contextlib
 
 from psptool import PSPTool
+from psptool.header_file import HeaderFile
 
 dirname = os.path.dirname(__file__)
 rom_fixtures_path = os.path.join(dirname, 'fixtures/roms')
@@ -83,9 +84,9 @@ class TestRomFiles(unittest.TestCase):
             for rom_index, rom in enumerate(roms):
                 directories = rom.directories
                 for dir_index, directory in enumerate(directories):
-                    for entry_index, entry in enumerate(directory.entries):
+                    for entry_index, entry in enumerate(directory.files):
                         with self.subTest(f"{filename=}, path={rom_index}.{dir_index}.{entry_index}, type={entry.type}"):
-                            if isinstance(entry, HeaderEntry):
+                            if isinstance(entry, HeaderFile):
                                 with io.StringIO() as stderr_buf:
                                     with contextlib.redirect_stderr(stderr_buf):
                                         out_decrypted = entry.get_decrypted_decompressed_body()

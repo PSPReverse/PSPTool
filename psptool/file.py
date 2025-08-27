@@ -261,7 +261,7 @@ class File(NestedBuffer):
             return hex(self.type)
 
     def get_readable_destination_address(self):
-        return hex(self.destination)
+        return hex(self.entry.destination)
 
     def get_readable_version(self):
         return ''
