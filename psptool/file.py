@@ -17,6 +17,7 @@ import struct
 
 from .utils import NestedBuffer
 from .utils import shannon
+from .utils import zlib_find_header
 from .entry import BiosDirectoryEntry
 
 from enum import Enum

@@ -50,9 +50,18 @@ class Directory(NestedBuffer):
         else:
             # 1. Create the immediate directory in front of us
             created_directories = []
-            directory = cls.from_offset(fet, offset)
-            cls.directories_by_offset[offset] = directory
-            created_directories.append(directory)
+            try:
+                directory = cls.from_offset(fet, offset)
+                cls.directories_by_offset[offset] = directory
+                created_directories.append(directory)
+            except Directory.ParseError as e:
+                # Handle empty entries gracefully (like master branch)
+                if "Empty entry" in str(e):
+                    fet.psptool.ph.print_warning(f"Skipping empty directory entry at offset 0x{offset:x}")
+                    return []
+                else:
+                    # Re-raise other parse errors
+                    raise
 
             # 2. Recursively add secondary directories referenced by the just created directory, if applicable
             for secondary_directory_offset in directory.secondary_directory_offsets:
@@ -74,11 +83,15 @@ class Directory(NestedBuffer):
         rom_offset &= fet.rom.addr_mask
         magic = fet.rom.get_bytes(rom_offset, 4)
 
+        if magic == b'\xff\xff\xff\xff':
+            fet.psptool.ph.print_warning(f"Empty FET entry at ROM address 0x{rom_offset:x}")
+            raise Directory.ParseError("Empty entry")
         if magic in cls.DIRECTORY_MAGICS:
             return cls(fet.rom, rom_offset, fet.psptool)
         elif magic in BiosDirectory.DIRECTORY_MAGICS:
             return cls.bios_directory_class()(fet.rom, rom_offset, fet.psptool)
         else:
+            fet.psptool.ph.print_warning(f"Unknown directory magic {magic} at offset 0x{rom_offset:x}")
             raise Directory.ParseError
 
     def __init__(self, parent_rom, offset: int, psptool, zen_generation=None):
