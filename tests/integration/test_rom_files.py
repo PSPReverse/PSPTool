@@ -5,7 +5,6 @@ import io
 import contextlib
 
 from psptool import PSPTool
-from psptool.entry import HeaderEntry
 
 dirname = os.path.dirname(__file__)
 rom_fixtures_path = os.path.join(dirname, 'fixtures/roms')
@@ -62,7 +61,7 @@ class TestRomFiles(unittest.TestCase):
                             with contextlib.redirect_stderr(stderr_buf):
                                 pt.ls()
                                 pt.ls(verbose=True)
-                                pt.ls_entries()
+                                pt.ls_files()
                                 pt.ls_json()
 
     def test_extract_basic(self):
