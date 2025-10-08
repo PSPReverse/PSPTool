@@ -16,9 +16,9 @@
 
 import sys
 import os
-import pkg_resources
 
 from .psptool import PSPTool
+from . import __version__
 from .utils import ObligingArgumentParser, PrintHelper
 from .header_file import HeaderFile
 from .pubkey_file import PubkeyFile
@@ -97,7 +97,7 @@ def main():
     ph = PrintHelper(args.verbose)
 
     if args.version:
-        print(pkg_resources.get_distribution("psptool").version)
+        print(__version__)
         sys.exit(0)
     elif not args.file:
         parser.print_help(sys.stderr)
