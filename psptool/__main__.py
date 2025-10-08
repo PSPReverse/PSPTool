@@ -16,6 +16,7 @@
 
 import sys
 import os
+import re
 
 from .psptool import PSPTool
 from . import __version__
@@ -25,6 +26,36 @@ from .pubkey_file import PubkeyFile
 from .crypto import PrivateKeyDict
 
 from argparse import RawTextHelpFormatter, SUPPRESS
+
+
+def find_files_by_type_regex(psp, pattern, rom_index=0):
+    """Find files whose type matches the given regex pattern.
+
+    Returns a tuple of (matching_files, are_identical) where:
+    - matching_files: list of matching files
+    - are_identical: boolean indicating if all matching files have identical content
+    """
+    matching_files = []
+    regex = re.compile(pattern, re.IGNORECASE)
+
+    # Search through all directories in the specified ROM
+    for directory in psp.blob.roms[rom_index].directories:
+        for file in directory.files:
+            if file is not None:
+                file_type = file.get_readable_type()
+                if regex.search(file_type):
+                    matching_files.append(file)
+
+    # Check if all matching files are identical
+    are_identical = True
+    if len(matching_files) > 1:
+        first_bytes = matching_files[0].get_bytes()
+        for file in matching_files[1:]:
+            if file.get_bytes() != first_bytes:
+                are_identical = False
+                break
+
+    return matching_files, are_identical
 
 
 def main():
@@ -50,6 +81,7 @@ def main():
     parser.add_argument('-m', '--metrics', help=SUPPRESS, action='store_true')
     parser.add_argument('-p', '--privkeystub', help=SUPPRESS)
     parser.add_argument('-a', '--privkeypass', help=SUPPRESS)
+    parser.add_argument('-T', '--type-regex', help=SUPPRESS)
 
     action = parser.add_mutually_exclusive_group(required=False)
 
@@ -67,11 +99,15 @@ def main():
 
     action.add_argument('-X', '--extract-file', help='\n'.join([
         'Extract one or more PSP firmware files.',
-        '[-d idx [-e idx]] [-n] [-u] [-c] [-k] [-o outfile]',
+        '[-d idx [-e idx]] [-n] [-u] [-c] [-k] [-o outfile] [-T regex]',
         '',
-        '-r idx:  specifies rom_index (default: 0)',
+        '-r idx:  specifies rom_index (default: ROM 0 only)',
         '-d idx:  specifies directory_index (default: all directories)',
         '-e idx:  specifies file_index (default: all files)',
+        '-T regex: extract file(s) whose type matches the regex pattern',
+        '          (e.g., "SMUSCS" matches "FW_PSP_SMUSCS~0x5f")',
+        '          If multiple identical files match, extracts one with warning',
+        '          If multiple different files match, exits with error',
         '-n:      skip duplicate files and extract unique files only',
         '-u:      uncompress compressed files',
         '-c:      try to decrypt files',
@@ -107,9 +143,29 @@ def main():
     output = None
 
     if args.extract_file:
-        if args.directory_index is not None and args.file_index is not None:
+        file = None
+
+        # Option 1) A single file should be extracted and we get it from a regex-based type search
+        if args.type_regex:
+            matching_files, are_identical = find_files_by_type_regex(psp, args.type_regex, args.rom_index)
+
+            if not matching_files:
+                ph.print_error_and_exit(f'No files found matching type regex: {args.type_regex}')
+            elif len(matching_files) > 1:
+                if are_identical:
+                    ph.print_warning(f'Found {len(matching_files)} files matching "{args.type_regex}" but they are identical. Extracting one of them.')
+                    file = matching_files[0]
+                else:
+                    ph.print_error_and_exit(f'Found {len(matching_files)} files matching "{args.type_regex}" but they have different contents. Not extracting any.')
+            else:
+                file = matching_files[0]
+
+        elif args.directory_index is not None and args.file_index is not None:
+            # Option 2) A single file should be extracted and we get it from (rom_index, directory_index, file_index)
             file = psp.blob.roms[args.rom_index].directories[args.directory_index].files[args.file_index]
 
+        if file:
+            # For Options 1 and 2, do additional extraction magic if requested
             if args.decompress:
                 if not file.compressed:
                     ph.print_error_and_exit(f'File is not compressed {file.get_readable_type()}')
@@ -123,36 +179,17 @@ def main():
             else:
                 output = file.get_bytes()
 
-        else:
-            if args.file_index is None:  # if neither directory_index nor file_index are specified
-                if args.directory_index is not None:
-                    directories = [psp.blob.roms[args.rom_index].directories[args.directory_index]]
-                else:
-                    directories = psp.blob.roms[args.rom_index].directories
+        # Option 3) Multiple files should be extracted
+        if args.file_index is None:
+            if args.directory_index is not None: # Option 3a) All files from a given directory_index
+                directories = [psp.blob.roms[args.rom_index].directories[args.directory_index]]
+            else: # Option 3b) All files from all directories from the given ROM (default: 0)
+                directories = psp.blob.roms[args.rom_index].directories
 
-                if args.no_duplicates is False:
-                    outdir = args.outfile or f'./{psp.filename}_extracted'
-                    for dir_index, directory in enumerate(directories):
-                        for file_index, file in enumerate(directory.files):
-                            if args.decompress and type(file) is HeaderFile:
-                                out_bytes = file.get_signed_bytes()
-                            elif args.decrypt and type(file) is HeaderFile:
-                                out_bytes = file.get_decrypted()
-                            elif args.pem_key and type(file) is PubkeyFile:
-                                out_bytes = file.get_pem_encoded()
-                            else:
-                                out_bytes = file.get_bytes()
-
-                            outpath = outdir + '/d%.2d_e%.2d_%s' % (dir_index, file_index, file.get_readable_type())
-                            if type(file) is HeaderFile:
-                                outpath += f'_{file.get_readable_version()}'
-
-                            os.makedirs(os.path.dirname(outpath), exist_ok=True)
-                            with open(outpath, 'wb') as f:
-                                f.write(out_bytes)
-                    ph.print_info(f"Extracted all files to {outdir}")
-                else:  # no_duplicates is True
-                    for file in psp.blob.roms[args.rom_index].unique_files:
+            if args.no_duplicates is False:
+                outdir = args.outfile or f'./{psp.filename}_extracted'
+                for dir_index, directory in enumerate(directories):
+                    for file_index, file in enumerate(directory.files):
                         if args.decompress and type(file) is HeaderFile:
                             out_bytes = file.get_signed_bytes()
                         elif args.decrypt and type(file) is HeaderFile:
@@ -162,17 +199,36 @@ def main():
                         else:
                             out_bytes = file.get_bytes()
 
-                        outdir = args.outfile or f'./{psp.filename}_unique_extracted'
-                        outpath = outdir + '/%s' % (file.get_readable_type())
-
-                        if issubclass(type(file), HeaderFile):
+                        outpath = outdir + '/d%.2d_e%.2d_%s' % (dir_index, file_index, file.get_readable_type())
+                        if type(file) is HeaderFile:
                             outpath += f'_{file.get_readable_version()}'
 
                         os.makedirs(os.path.dirname(outpath), exist_ok=True)
                         with open(outpath, 'wb') as f:
                             f.write(out_bytes)
-            else:
-                parser.print_help(sys.stderr)
+            else:  # no_duplicates is True
+                for file in psp.blob.unique_files():
+                    if args.decompress and type(file) is HeaderFile:
+                        out_bytes = file.get_signed_bytes()
+                    elif args.decrypt and type(file) is HeaderFile:
+                        out_bytes = file.get_decrypted()
+                    elif args.pem_key and type(file) is PubkeyFile:
+                        out_bytes = file.get_pem_encoded()
+                    else:
+                        out_bytes = file.get_bytes()
+
+                    outdir = args.outfile or f'./{psp.filename}_unique_extracted'
+                    outpath = outdir + '/%s' % (file.get_readable_type())
+
+                    if issubclass(type(file), HeaderFile):
+                        outpath += f'_{file.get_readable_version()}'
+
+                    os.makedirs(os.path.dirname(outpath), exist_ok=True)
+                    with open(outpath, 'wb') as f:
+                        f.write(out_bytes)
+            ph.print_info(f"Extracted all files to {outdir}")
+        else:
+            parser.print_help(sys.stderr)
 
     elif args.replace_file:
         if args.directory_index is not None and args.file_index is not None and args.outfile is not None:
