@@ -35,20 +35,19 @@ SECONDARY_DIRECTORY_ENTRY_TYPES = [0x40, 0x49, 0x70]
 TERTIARY_DIRECTORY_ENTRY_TYPES = [0x48, 0x4a]
 
 class File(NestedBuffer):
-    # all files by offset
-    # todo: what if we have multi-ROM? then two ROMs share this singleton!
-    files_by_offset: Dict[int, 'File'] = {}
 
     @classmethod
     def create_file_if_not_exists(cls, directory: 'Directory', entry: 'DirectoryEntry'):
-        if entry.file_offset() in cls.files_by_offset:
-            existing_file = cls.files_by_offset[entry.file_offset()]
+        files_by_offset = directory.psptool._registries['files']
+        
+        if entry.file_offset() in files_by_offset:
+            existing_file = files_by_offset[entry.file_offset()]
             existing_file.references.append(directory)
             return existing_file
         else:
             file = cls.from_entry(directory, directory.parent_buffer, entry, directory.rom, directory.psptool)
             if file is not None:
-                cls.files_by_offset[entry.file_offset()] = file
+                files_by_offset[entry.file_offset()] = file
                 return file
         pass
 
