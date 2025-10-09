@@ -139,6 +139,17 @@ class PSPTool:
                 if file.get_readable_security_features():
                     info.append(file.get_readable_security_features())
 
+            if file.get_readable_type() == "BIOS":
+                info.append(f'destination({file.get_readable_destination_address()})')
+                if file.entry.type_flags & 0x1:
+                    info.append('reset image')
+                if file.entry.type_flags & 0x2:
+                    info.append('copy image')
+                if file.entry.type_flags & 0x4:
+                    info.append('read only')
+            if file.get_readable_type() == "APOB":
+                info.append(f'destination({file.get_readable_destination_address()})')
+
             all_values = [
                 '',
                 '',

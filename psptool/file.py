@@ -41,7 +41,13 @@ class File(NestedBuffer):
 
     @classmethod
     def create_file_if_not_exists(cls, directory: 'Directory', entry: 'DirectoryEntry'):
-        if entry.file_offset() in cls.files_by_offset:
+        # APOBs do not have location nor size, so can be easily mistaken as duplicated
+        # in multi-ROM files. There should be only one APOB per BIOS directory anyways.
+        if type(entry) == BiosDirectoryEntry and entry.type == 0x61:
+            file = cls.from_entry(directory, directory.parent_buffer, entry, directory.rom, directory.psptool)
+            if file is not None:
+                return file
+        elif entry.file_offset() in cls.files_by_offset:
             existing_file = cls.files_by_offset[entry.file_offset()]
             existing_file.references.append(directory)
             return existing_file
@@ -253,8 +259,11 @@ class File(NestedBuffer):
         pass
 
     def get_readable_type(self):
-        if self.type == 0x62:
-            return "BIOS"
+        if type(self.entry) == BiosDirectoryEntry:
+            if self.type == 0x62:
+                return "BIOS"
+            if self.type == 0x61:
+                return "APOB"
         if self.type in self.DIRECTORY_ENTRY_TYPES:
             return f'{self.DIRECTORY_ENTRY_TYPES[self.type]}~{hex(self.type)}'
         else:
@@ -292,4 +301,20 @@ class File(NestedBuffer):
 
 
 class BiosFile(File):
-    pass
+    def __init__(self, parent_directory, parent_buffer, offset, entry, blob, psptool):
+        super().__init__(parent_directory, parent_buffer, offset, entry, blob, psptool)
+        self.destination = self.entry.destination
+
+    def get_address(self) -> int:
+        if self.get_readable_type() == "APOB":
+            return 0
+        elif isinstance(self.parent_buffer, NestedBuffer):
+            return self.buffer_offset + self.parent_buffer.get_address()
+        else:
+            return self.buffer_offset
+
+    def __repr__(self):
+        return super().__repr__()[:-1] + f', destination={hex(self.destination)})'
+
+    def get_readable_destination_address(self):
+        return hex(self.destination)
