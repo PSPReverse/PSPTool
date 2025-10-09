@@ -31,7 +31,7 @@ class DirectoryEntry(NestedBuffer):
         self.parent_directory = parent_directory
 
     def __repr__(self):
-        return f'{self.__class__.__name__}({self.type=:#x}, {self.type_flags=:#x}, {self.size=:#x}, ' \
+        return f'{self.__class__.__name__}({self.type=:#x}, {self.flags=:#x}, {self.size=:#x}, ' \
                f'{self.offset=:#x}, {self.rsv0=:#x})'
 
     def file_offset(self):
@@ -42,19 +42,35 @@ class DirectoryEntry(NestedBuffer):
     
     @property
     def type(self):
-        return struct.unpack('<H', self[0:2])[0]
+        return struct.unpack('<B', self[0:1])[0]
 
     @type.setter
     def type(self, value):
-        self.set_bytes(0, 2, struct.pack('<H', value))
+        self.set_bytes(0, 1, struct.pack('<B', value))
 
     @property
-    def type_flags(self):
+    def subprogram(self):
+        return struct.unpack('<B', self[1:2])[0]
+
+    @subprogram.setter
+    def subprogram(self, value):
+        self.set_bytes(1, 1, struct.pack('<B', value))
+
+    @property
+    def flags(self):
         return struct.unpack('<H', self[2:4])[0]
 
-    @type_flags.setter
-    def type_flags(self, value):
+    @flags.setter
+    def flags(self, value):
         self.set_bytes(2, 2, struct.pack('<H', value))
+
+    @property
+    def instance(self):
+        return (self.flags >> 3) & 0xF
+
+    @instance.setter
+    def instance(self, value):
+       self.flags = self.flags | ((value & 0xF) << 3)
 
     @property
     def size(self):
@@ -94,3 +110,35 @@ class BiosDirectoryEntry(DirectoryEntry):
     @destination.setter
     def destination(self, value):
         self.set_bytes(16, 8, struct.pack('<Q', value))
+
+    @property
+    def region_type(self):
+        return struct.unpack('<B', self[1:2])[0]
+
+    @region_type.setter
+    def region_type(self, value):
+        self.set_bytes(1, 1, struct.pack('<B', value))
+
+    @property
+    def flags(self):
+        return struct.unpack('<H', self[2:4])[0]
+
+    @flags.setter
+    def flags(self, value):
+        self.set_bytes(2, 2, struct.pack('<H', value))
+
+    @property
+    def subprogram(self):
+        return (self.flags >> 8) & 0x7
+
+    @subprogram.setter
+    def subprogram(self, value):
+       self.flags = self.flags | ((value & 0x7) << 8)
+
+    @property
+    def instance(self):
+        return (self.flags >> 4) & 0xF
+
+    @instance.setter
+    def instance(self, value):
+       self.flags = self.flags | ((value & 0xF) << 4)

@@ -93,8 +93,8 @@ class PSPTool:
         if files is None:
             files = sorted(self.blob.unique_files())
 
-        basic_fields = ['', ' ', 'Entry', 'Address', 'Size', 'Type', 'Magic/ID', 'File Version', 'File Info']
-        verbose_fields = ['type_flags', 'MD5', 'size_signed', 'size_full', 'size_packed', 'load_addr']
+        basic_fields = ['', ' ', 'Entry', 'Address', 'Size', 'Type', 'Subprogram', 'Instance', 'Magic/ID', 'File Version', 'File Info']
+        verbose_fields = ['flags', 'MD5', 'size_signed', 'size_full', 'size_packed', 'load_addr']
 
         t = PrettyTable(basic_fields + verbose_fields)
         t.align = 'r'
@@ -141,11 +141,11 @@ class PSPTool:
 
             if file.get_readable_type() == "BIOS":
                 info.append(f'destination({file.get_readable_destination_address()})')
-                if file.entry.type_flags & 0x1:
+                if file.entry.flags & 0x1:
                     info.append('reset image')
-                if file.entry.type_flags & 0x2:
+                if file.entry.flags & 0x2:
                     info.append('copy image')
-                if file.entry.type_flags & 0x4:
+                if file.entry.flags & 0x4:
                     info.append('read only')
             if file.get_readable_type() == "APOB":
                 info.append(f'destination({file.get_readable_destination_address()})')
@@ -157,10 +157,12 @@ class PSPTool:
                 hex(file.get_address()),
                 hex(file.buffer_size),
                 file.get_readable_type(),
+                hex(file.entry.subprogram),
+                hex(file.entry.instance),
                 file.get_readable_magic(),
                 file.get_readable_version(),
                 ', '.join(info),
-                '',  # hex(file.entry.type_flags) if 'entry' in file else '',
+                '',  # hex(file.entry.flags) if 'entry' in file else '',
                 file.md5()[:4].upper()
             ]
 

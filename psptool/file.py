@@ -199,7 +199,7 @@ class File(NestedBuffer):
         self.type = entry.type
 
         if type(entry) == BiosDirectoryEntry:
-            self.compressed = (self.entry.type_flags >> 3) & 1
+            self.compressed = (self.entry.flags >> 3) & 1
         else:
             self.compressed = False
 
