@@ -19,6 +19,7 @@ import sys, json
 
 from .file import File
 from .header_file import HeaderFile
+from .microcode_file import MicrocodeFile
 from .pubkey_file import PubkeyFile
 from .blob import Blob
 from .utils import PrintHelper
@@ -149,6 +150,10 @@ class PSPTool:
                     info.append('read only')
             if file.get_readable_type() == "APOB":
                 info.append(f'destination({file.get_readable_destination_address()})')
+
+            if type(file) == MicrocodeFile:
+                info.append(f'patch_level({hex(file.patch_level)})')
+                info.append(f'date({file.get_readable_date()})')
 
             all_values = [
                 '',

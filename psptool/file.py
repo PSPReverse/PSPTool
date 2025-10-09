@@ -259,6 +259,7 @@ class File(NestedBuffer):
         from .pubkey_file import PubkeyFile
         from .key_store_file import KeyStoreFile
         from .header_file import HeaderFile
+        from .microcode_file import MicrocodeFile
 
         try:
             if entry.type in cls.PUBKEY_ENTRY_TYPES:
@@ -267,6 +268,8 @@ class File(NestedBuffer):
                 return KeyStoreFile(*file_args)
             elif entry.type not in cls.NO_HDR_ENTRY_TYPES + SECONDARY_DIRECTORY_ENTRY_TYPES:
                 return HeaderFile(*file_args)
+            elif type(entry) == BiosDirectoryEntry and entry.type == 0x66:
+                return MicrocodeFile(*file_args)
             else:
                 return cls(*file_args)
         except File.ParseError as e:
