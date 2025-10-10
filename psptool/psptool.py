@@ -40,12 +40,8 @@ class PSPTool:
         self.filename = filename
         self.ph = PrintHelper(verbose)
         
-        # Instance-level registries for files and directories
-        # This allows multiple PSPTool instances to coexist without conflicts
-        self._registries = {
-            'files': {},
-            'directories': {}
-        }
+        self.directories_by_offset: Dict[int, 'Directory'] = {}
+        self.files_by_offset: Dict[int, 'File'] = {}
 
         self.blob = Blob(rom_bytes, len(rom_bytes), self)
         self.cert_tree = CertificateTree.from_blob(self.blob, self)

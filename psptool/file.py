@@ -38,16 +38,14 @@ class File(NestedBuffer):
 
     @classmethod
     def create_file_if_not_exists(cls, directory: 'Directory', entry: 'DirectoryEntry'):
-        files_by_offset = directory.psptool._registries['files']
-        
-        if entry.file_offset() in files_by_offset:
-            existing_file = files_by_offset[entry.file_offset()]
+        if entry.file_offset() in directory.psptool.files_by_offset:
+            existing_file = directory.psptool.files_by_offset[entry.file_offset()]
             existing_file.references.append(directory)
             return existing_file
         else:
             file = cls.from_entry(directory, directory.parent_buffer, entry, directory.rom, directory.psptool)
             if file is not None:
-                files_by_offset[entry.file_offset()] = file
+                directory.psptool.files_by_offset[entry.file_offset()] = file
                 return file
         pass
 

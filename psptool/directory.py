@@ -42,16 +42,14 @@ class Directory(NestedBuffer):
     def create_directories_if_not_exist(cls, offset, fet, zen_generation=None) -> List['Directory']:
         # Recursively return or create and return found directories
 
-        directories_by_offset = fet.psptool._registries['directories']
-        
-        if offset in directories_by_offset:
-            return [directories_by_offset[offset]]
+        if offset in fet.psptool.directories_by_offset:
+            return [fet.psptool.directories_by_offset[offset]]
         else:
             # 1. Create the immediate directory in front of us
             created_directories = []
             try:
                 directory = cls.from_offset(fet, offset, zen_generation)
-                directories_by_offset[offset] = directory
+                fet.psptool.directories_by_offset[offset] = directory
                 created_directories.append(directory)
             except Directory.ParseError as e:
                 # Handle empty entries gracefully (like master branch)
