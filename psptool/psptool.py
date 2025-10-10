@@ -161,6 +161,9 @@ class PSPTool:
                 info.append(f'patch_level({hex(file.patch_level)})')
                 info.append(f'date({file.get_readable_date()})')
 
+            if file.type == 0xb:
+                info.append(f'soft_fuse({hex(file.entry.offset + (file.entry.rsv0 << 32))})')
+
             all_values = [
                 '',
                 '',

@@ -29,10 +29,11 @@ class DirectoryEntry(NestedBuffer):
     def __init__(self, parent_directory: 'Directory', entry_offset):
         super().__init__(parent_directory.body, self.ENTRY_SIZE, entry_offset)
         self.parent_directory = parent_directory
+        self.entry_offset = entry_offset
 
     def __repr__(self):
         return f'{self.__class__.__name__}({self.type=:#x}, {self.flags=:#x}, {self.size=:#x}, ' \
-               f'{self.offset=:#x}, {self.rsv0=:#x})'
+               f'{self.offset=:#x}, {self.entry_offset=:#x}, {self.rsv0=:#x})'
 
     def file_offset(self):
         if self.rsv0 & (1 << 31):  # Zen 4 + 5
