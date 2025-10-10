@@ -17,7 +17,10 @@
 from prettytable import PrettyTable
 import sys, json
 
+from typing import Dict
+
 from .file import File
+from .directory import Directory
 from .header_file import HeaderFile
 from .microcode_file import MicrocodeFile
 from .pubkey_file import PubkeyFile
