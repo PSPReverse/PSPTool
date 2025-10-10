@@ -69,10 +69,16 @@ class Fet(NestedBuffer):
             # TODO: Why is 0xFFFFFFFe a possible value here?
             if rom_addr in [0x0, 0xFFFFFFFF, 0xFFFFFFFe]:
                 continue
-            rom_addr &= self.rom.addr_mask
+            # if ROM is bigger than 16MB, we have to override the mask for
+            # physical address
+            if rom_addr > 0xFF000000 and self.rom.addr_mask + 1 > 16 * 1024 * 1024:
+                rom_addr &= 0x00FFFFFF
+            else:
+                rom_addr &= self.rom.addr_mask
+
             try:
                 dir_magic = self.rom[rom_addr:rom_addr + 4]
-            except:
+            except AssertionError as e:
                 self.psptool.ph.print_warning(f"FET entry 0x{rom_addr:x} not found or invalid, skipping ...")
                 continue
             if dir_magic == b'2PSP' or dir_magic == b'2BHD':
