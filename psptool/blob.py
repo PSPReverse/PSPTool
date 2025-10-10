@@ -67,7 +67,11 @@ class Blob(NestedBuffer):
                     continue
                 try:
                     rom_offset = fet_location - fet_offset  # e.g. 0x20800 - 0x20000 = 0x0800
-                    potential_rom = Rom(self, min(rom_size, self._MAX_PAGE_SIZE), rom_offset, fet_offset, psptool)
+                    # W/A for images with single ROMs that have entries crossing 16MB boundary
+                    if rom_page == 0:
+                        potential_rom = Rom(self, rom_size, rom_offset, fet_offset, psptool)
+                    else:
+                        potential_rom = Rom(self, min(rom_size, self._MAX_PAGE_SIZE), rom_offset, fet_offset, psptool)
                     self.roms.append(potential_rom)
                     fet_parsed = True
                     break  # found correct fet_offset!
