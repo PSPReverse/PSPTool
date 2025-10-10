@@ -200,6 +200,11 @@ def main():
                             out_bytes = file.get_bytes()
 
                         outpath = outdir + '/d%.2d_e%.2d_%s' % (dir_index, file_index, file.get_readable_type())
+
+                        # We may have same file types but different subprograms, instances
+                        # Account for it in the filenames
+                        if file.entry.subprogram != 0 or file.entry.instance != 0:
+                            outpath += f'_SUB_{hex(file.entry.subprogram)}_INS_{hex(file.entry.instance)}'
                         if type(file) is HeaderFile:
                             outpath += f'_{file.get_readable_version()}'
 

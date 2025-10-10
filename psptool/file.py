@@ -38,7 +38,13 @@ class File(NestedBuffer):
 
     @classmethod
     def create_file_if_not_exists(cls, directory: 'Directory', entry: 'DirectoryEntry'):
-        if entry.file_offset() in directory.psptool.files_by_offset:
+        # APOBs do not have location nor size, so can be easily mistaken as duplicated
+        # in multi-ROM files. There should be only one APOB per BIOS directory anyways.
+        if type(entry) == BiosDirectoryEntry and entry.type == 0x61:
+            file = cls.from_entry(directory, directory.parent_buffer, entry, directory.rom, directory.psptool)
+            if file is not None:
+                return file
+        elif entry.file_offset() in cls.files_by_offset:
             existing_file = directory.psptool.files_by_offset[entry.file_offset()]
             existing_file.references.append(directory)
             return existing_file
@@ -75,10 +81,16 @@ class File(NestedBuffer):
         0x10: 'PSP_AGESA_RESUME_FW',
         0x12: 'SMU_OFF_CHIP_FW_2',
         0x13: 'DEBUG_UNLOCK',
-        0x1A: 'PSP_S3_NV_DATA',
+        0x15: 'TEE_IP_KEY_MGR_DRIVER',
+        0x1A: 'PSP_S3_NV_DATA_OR_SEV_DRIVER',
+        0x1B: 'TEE_BOOT_DRIVER',
+        0x1C: 'TEE_SOC_DRIVER',
+        0x1D: 'TEE_FBG_DRIVER',
+        0x1F: 'TEE_INTERFACE_DRIVER',
         0x20: 'HARDWARE_IP_CONFIG',
         0x21: 'WRAPPED_IKEK',
         0x22: 'TOKEN_UNLOCK',
+        0x23: 'PSP_DIAG_BL',
         0x24: 'SEC_GASKET',
         0x25: 'MP2_FW',
         0x26: 'MP2_FW_2',
@@ -86,7 +98,11 @@ class File(NestedBuffer):
         0x28: 'DRIVER_ENTRIES',
         0x29: 'KVM_IMAGE',
         0x2A: 'MP5_FW',
+        0x2B: 'EMBEDDED_FW_STRUCTURE',
+        0x2C: 'TEE_WRITE_ONCE_NVRAM',
         0x2D: 'S0I3_DRIVER',
+        0x2E: 'PREMIUM_CHIPSET_MP0_DXIO_FW',
+        0x2F: 'PREMIUM_CHIPSET_MP1_FW',
         0x30: 'ABL0',
         0x31: 'ABL1',
         0x32: 'ABL2',
@@ -99,25 +115,107 @@ class File(NestedBuffer):
         0x39: 'SEV_CODE',
         0x3A: 'FW_PSP_WHITELIST',
         0x3C: 'VBIOS_PRELOAD',
-        # 0x40: 'FW_L2_PTR',
+        0x3D: 'WLAN_UMAC',
+        0x3E: 'WLAN_IMAC',
+        0x3F: 'WLAN_BT',
+        0x40: 'PSP_FW_L2_PTR',
         0x41: 'FW_IMC',
-        0x42: 'FW_GEC',
-        # 0x43: 'FW_XHCI',
-        0x44: 'FW_INVALID',
+        0x42: 'FW_GEC_OR_DXIO_PHY_SRAM_FW',
+        0x43: 'DXIO_PHY_SRAM_FW_PUBKEY',
+        0x44: 'FW_XHCI',
         0x45: 'TOS_SECURITY_POLICY',
+        0x46: 'ANOTHER_FET',
         0x47: 'DRTM_TA',
+        0x48: 'PSP_FW_L2A_PTR',
+        0x49: 'BIOS_L2AB_PTR',
+        0x4a: 'PSP_FW_L2B_PTR',
+        0x4b: 'RESERVED',
+        0x4c: 'PREMIUM_CHIPSET_SEC_POLICY',
+        0x4d: 'PREMIUM_CHIPSET_DEBUG_UNLOCK',
+        0x4e: 'PMU_PUBKEY',
+        0x4f: 'UMC_FW',
+        0x50: 'BL_PUBLIC_KEY',
         0x51: 'TOS_PUBLIC_KEY',
+        0x52: 'OEM_PSP_BL_USER_APP',
+        0x53: 'OEM_PSP_BL_USER_APP_KEY',
         0x54: 'PSP_NVRAM',
         0x55: 'BL_ROLLBACK_SPL',
+        0x56: 'TOS_ROLLBACK_SPL',
+        0x57: 'PSP_BL_CVIP_TABLE',
+        0x58: 'DMCU_ERAM',
+        0x59: 'DMCU_ISR',
         0x5a: 'MSMU_BINARY_0',
+        0x5b: 'MSMU_BINARY_1',
         0x5c: 'WMOS',
-        0x71: 'DMCUB_INS',
-        0x46: 'ANOTHER_FET',
-        0x50: 'KEY_DATABASE',
-        0x5f: 'FW_PSP_SMUSCS',
+        0x5d: 'MPIO_FW',
+        0x5e: 'DF_TOPOLOGY',
+        0x5f: 'FW_PSP_SMUSCS_OR_TPMLITE',
+        0x64: 'TEE_RAS_DRIVER',
+        0x65: 'TEE_RAS_TRUSTED_APP',
+        0x67: 'TEE_FHP_DRIVER_FW',
+        0x68: 'TEE_SPDM_DRIVER_FW',
+        0x69: 'TEE_DPE_DRIVER_FW',
+        0x6a: 'TEE_PRE_MEM_DRIVER_FW',
+        0x6b: 'TEE_MP_RAS_DRIVER_FW',
+        0x6c: 'TEE_POST_MEM_DRIVER_FW',
+        0x70: 'BIOS_L2_PTR',
+        0x71: 'PSP_DMCUB_CODE',
+        0x72: 'PSP_DMCUB_DATA',
+        0x73: 'PSP_FW_BOOT_LOADER',
+        0x74: 'PSP_PLATFORM_DRIVER',
+        0x75: 'FW_SOFT_FUSING_BINARY',
+        0x76: 'REGISTER_INIT_BIN',
+        0x80: 'OEM_SYS_TA',
+        0x81: 'OEM_SYS_TA_SIGNING_KEY',
+        0x82: 'IKEK_OEM',
+        0x84: 'TKEK_OEM',
+        0x85: 'AMF_FW1',
+        0x86: 'AMF_FW2',
+        0x87: 'MFD_MPM_FACTORY',
+        0x88: 'MFD_MPM_WLAN_FW',
+        0x89: 'MPM_DRIVER',
+        0x8A: 'USB4_PHY_FW',
+        0x8B: 'FIPS_CERTIFICATION_MODULE',
+        0x8C: 'MPDMA_TF_FW',
+        0x8D: 'IKEK_TA',
+        0x8E: 'SEC_FW_DATA_RECORDER',
+        0x8F: 'OFFCHIP_USB4_FW',
+        0x90: 'CCX_CORE_INIT_AND_PM',
+        0x91: 'GMI3_PHY_FW',
+        0x92: 'MPDMA_MPDACC_TIERED_MEMORY_PAGE_MIGRATION_FW',
+        0x93: 'PROM21_FW',
+        0x94: 'LSDMA_FW',
+        0x95: 'C20_PHY_FW',
+        0x96: 'NPU_FW',
+        0x97: 'AMD_SFFS_PUBKEY',
+        0x98: 'CPU_FEAT_CONFIG_TBL',
+        0x99: 'PMF_BINARY',
+        0x9A: 'REDUCED_MSMU_SIZE',
+        0x9B: 'GFX_IMU_LX7_CODE',
+        0x9C: 'GFX_IMU_LX7_DATA',
+        0x9D: 'FW_ROM_OR_FIPS_SRAM',
+        0x9E: 'SFDR_DATA',
+        0x9F: 'REG_ACCESS_WHITELIST',
+        0xA0: 'CPU_S3_IMAGE',
+        0xA2: 'UZSC_RESET_WORKAROUND',
+        0xA3: 'USB_NATIVE_DP',
+        0xA4: 'USB_TYPEC_DP',
+        0xA5: 'USB_SS_FW',
+        0xA6: 'USB4',
+        0xA7: 'OFFCHIP_XHCI_SATA_PCIE',
+        0xAA: 'ASP_LIBSEC',
+        0xAB: 'ART_FMC_IMG',
+        0xAC: 'ART_RUNTIME_FW',
+        0xAD: 'ART_KEY_DATABASE',
+        0xAE: 'SEC_ASP_LIBROM_OVERLAY_FW',
+        0xB0: 'MPM_CONTEXT',
+    }
+
+    # Entry types which overlap the type value with PSP directory, but are present only in BIOS directory
+    BIOS_DIRECTORY_ENTRY_TYPES = {
         0x60: 'APCB',
         0x61: 'APOB',
-        0x62: 'FW_XHCI',
+        0x62: 'BIOS',
         0x63: 'APOB_NV_COPY',
         0x64: 'PMU_CODE',
         0x65: 'PMU_DATA',
@@ -125,32 +223,21 @@ class File(NestedBuffer):
         0x67: 'CORE_MCE_DATA',
         0x68: 'APCB_COPY',
         0x69: 'EARLY_VGA_IMAGE',
-        0x6A: 'MP2_FW_CFG',
-        0x73: 'PSP_FW_BOOT_LOADER',
-        0x80: 'OEM_System_Trusted_Application',
-        0x81: 'OEM_System_TA_Signing_key',
-        0x108: 'PSP_SMU_FN_FIRMWARE',
-        0x118: 'PSP_SMU_FN_FIRMWARE2',
-
-        # Entry types named by us
-        #   Custom names are denoted by a leading '!'
-        0x14: '!PSP_MCLF_TRUSTLETS',  # very similiar to ~PspTrustlets.bin~ in coreboot blobs
-        0x40: '!PL2_SECONDARY_DIRECTORY',
-        0x43: '!KEY_UNKNOWN_1',
-        0x4e: '!KEY_UNKNOWN_2',
-        0x70: '!BL2_SECONDARY_DIRECTORY',
-        0x15f: '!FW_PSP_SMUSCS_2',  # seems to be a secondary FW_PSP_SMUSCS (see above)
-        0x112: '!SMU_OFF_CHIP_FW_3',  # seems to tbe a tertiary SMU image (see above)
-        0xdead: '!KEY_NOT_IN_DIR'
-
+        0x6B: 'COREBOOT_VBOOT_CONTEXT',
+        0x6D: 'ROM_ARMOR_BIOS_NVSTORE',
+        0x6E: 'DEBUG_UNIT',
+        0x6F: 'OEM_LOGO_IMAGE',
+        0x77: 'DDRPHY_PCU_FW',
+        0x7B: 'MPRAS_TRUSTRED_APP_IMG',
     }
-    PUBKEY_ENTRY_TYPES = [0x0, 0x9, 0xa, 0x5, 0xd, 0x43, 0x4e, 0xdead]
+
+    PUBKEY_ENTRY_TYPES = [0x0, 0x9, 0xa, 0x5, 0xd, 0x43, 0x4e, 0x53, 0x81, 0x97, 0xad ]
 
     # Types known to have no PSP HDR
     # TODO: Find a better way to identify those entries
     NO_HDR_ENTRY_TYPES = [0x4, 0xb, 0x21, 0x40, 0x48, 0x49, 0x4a, 0x70, 0x6, 0x61, 0x60, 0x68, 0x5f,
-                          0x1a, 0x22, 0x63, 0x67, 0x66, 0x6d, 0x62, 0x61, 0x7, 0x38, 0x46, 0x54, 0x8d,
-                          0x69 ]
+                          0x1a, 0x22, 0x63, 0x67, 0x66, 0x6d, 0x62, 0x61, 0x7, 0x38, 0x46, 0x54,
+                          0x82, 0x84, 0x8d, 0x69 ]
 
     NO_SIZE_ENTRY_TYPES = [0xb]
     KEY_STORE_TYPES = [0x50, 0x51]
@@ -169,6 +256,7 @@ class File(NestedBuffer):
         from .pubkey_file import PubkeyFile
         from .key_store_file import KeyStoreFile
         from .header_file import HeaderFile
+        from .microcode_file import MicrocodeFile
 
         try:
             if entry.type in cls.PUBKEY_ENTRY_TYPES:
@@ -177,6 +265,8 @@ class File(NestedBuffer):
                 return KeyStoreFile(*file_args)
             elif entry.type not in cls.NO_HDR_ENTRY_TYPES + SECONDARY_DIRECTORY_ENTRY_TYPES:
                 return HeaderFile(*file_args)
+            elif type(entry) == BiosDirectoryEntry and entry.type == 0x66:
+                return MicrocodeFile(*file_args)
             else:
                 return cls(*file_args)
         except File.ParseError as e:
@@ -190,7 +280,7 @@ class File(NestedBuffer):
         self.type = entry.type
 
         if type(entry) == BiosDirectoryEntry:
-            self.compressed = (self.entry.type_flags >> 3) & 1
+            self.compressed = (self.entry.flags >> 3) & 1
         else:
             self.compressed = False
 
@@ -250,8 +340,13 @@ class File(NestedBuffer):
         pass
 
     def get_readable_type(self):
-        if self.type == 0x62:
-            return "BIOS"
+        if type(self.entry) == BiosDirectoryEntry:
+            if self.type == 0x62:
+                return "BIOS"
+            if self.type == 0x61:
+                return "APOB"
+            if self.type in self.BIOS_DIRECTORY_ENTRY_TYPES:
+                return f'{self.BIOS_DIRECTORY_ENTRY_TYPES[self.type]}~{hex(self.type)}'
         if self.type in self.DIRECTORY_ENTRY_TYPES:
             return f'{self.DIRECTORY_ENTRY_TYPES[self.type]}~{hex(self.type)}'
         else:
@@ -289,4 +384,20 @@ class File(NestedBuffer):
 
 
 class BiosFile(File):
-    pass
+    def __init__(self, parent_directory, parent_buffer, offset, entry, blob, psptool):
+        super().__init__(parent_directory, parent_buffer, offset, entry, blob, psptool)
+        self.destination = self.entry.destination
+
+    def get_address(self) -> int:
+        if self.get_readable_type() == "APOB":
+            return 0
+        elif isinstance(self.parent_buffer, NestedBuffer):
+            return self.buffer_offset + self.parent_buffer.get_address()
+        else:
+            return self.buffer_offset
+
+    def __repr__(self):
+        return super().__repr__()[:-1] + f', destination={hex(self.destination)})'
+
+    def get_readable_destination_address(self):
+        return hex(self.destination)
