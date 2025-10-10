@@ -70,8 +70,13 @@ class Directory(NestedBuffer):
 
             # 3. Recursively add tertiary directories (double references introduced in Zen 4), if applicable
             for tertiary_directory_offset in directory.tertiary_directory_offsets:
-                directory_body = fet.rom.get_bytes(tertiary_directory_offset + 16, 8)
-                actual_tertiary_offset = int.from_bytes(directory_body[:4], 'little')
+                directory_body = fet.rom.get_bytes(tertiary_directory_offset, 32)
+                # Valid values for prority is either 0xffffffff (slot A) or 0x1 (slot B).
+                # Others may mean unbootable partition and some ROMs do not put valid directories there.
+                priority = int.from_bytes(directory_body[4:8], 'little')
+                if priority != 0xffffffff and priority != 0:
+                    continue
+                actual_tertiary_offset = int.from_bytes(directory_body[16:20], 'little')
                 # Resolve one more indirection
                 tertiary_directories = cls.create_directories_if_not_exist(actual_tertiary_offset, fet, zen_generation)
                 created_directories += tertiary_directories
