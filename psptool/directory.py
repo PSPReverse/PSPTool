@@ -85,7 +85,7 @@ class Directory(NestedBuffer):
         rom_offset &= fet.rom.addr_mask
         magic = fet.rom.get_bytes(rom_offset, 4)
 
-        if magic == b'\xff\xff\xff\xff':
+        if magic == b'\xff\xff\xff\xff' or magic == b'\x00\x00\x00\x00':
             fet.psptool.ph.print_warning(f"Empty FET entry at ROM address 0x{rom_offset:x}")
             raise Directory.ParseError("Empty entry")
         if magic in cls.DIRECTORY_MAGICS:
