@@ -36,11 +36,32 @@ class DirectoryEntry(NestedBuffer):
                f'{self.offset=:#x}, {self.entry_offset=:#x}, {self.rsv0=:#x})'
 
     def file_offset(self):
-        if self.rsv0 & (1 << 31):  # Zen 4 + 5
-            return self.parent_directory.buffer_offset + self.offset
-        else:  # old style
+        # Special case soft fuse chain, no offset or size
+        if self.type == 0xb:
+            dir_start = self.parent_directory.buffer_offset + self.parent_directory.HEADER_SIZE
+            return dir_start + self.entry_offset
+
+        addr_mode = self.parent_directory.address_mode
+        # If directory address mode is 2 or 3 (relative to dir or slot), the
+        # entry address mode must be taken into account, otherwise ignored.
+        if addr_mode == 2 or addr_mode == 3:
+            addr_mode = self.address_mode
+
+        if addr_mode == 0:
+            # x86 physical address, should be in range 0xff000000 - 0xffffffff
+            # But some images use flash offset in x86 physical address mode.
             return self.offset & self.parent_directory.rom.addr_mask
-    
+        elif addr_mode == 1:
+            # Flash offset from start of BIOS, most common on modern systems
+            return self.offset
+        elif addr_mode == 2:
+            # Flash offset from start of directory header
+            return self.parent_directory.buffer_offset + self.offset
+        elif addr_mode == 3:
+            # Flash offset from start of the slot
+            # TODO: How to calculate the offset from slot? Is this correct?
+            return self.parent_directory.buffer_offset + self.offset
+
     @property
     def type(self):
         return struct.unpack('<B', self[0:1])[0]
@@ -97,6 +118,13 @@ class DirectoryEntry(NestedBuffer):
     def rsv0(self, value):
         self.set_bytes(12, 4, struct.pack('<I', value))
 
+    # 00b: x86 Physical address
+    # 01b: Offset from start of the BIOS (flash offset)
+    # 10b: Offset from start of directory header
+    # 11b: Offset from start of partition
+    @property
+    def address_mode(self):
+        return (self.rsv0 >> 30) & 3
 
 class BiosDirectoryEntry(DirectoryEntry):
     ENTRY_SIZE = 4 * 6

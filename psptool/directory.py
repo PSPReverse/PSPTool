@@ -108,7 +108,7 @@ class Directory(NestedBuffer):
         self._count = int.from_bytes(self.rom[self.buffer_offset + 8: self.buffer_offset + 12], 'little')
         self.magic = self.rom.get_bytes(self.buffer_offset, 4)
         assert self.magic in self.DIRECTORY_MAGICS
-        self.reserved = self.rom.get_bytes(self.buffer_offset + 12, 4)
+        self.additional_info = self.rom.get_bytes(self.buffer_offset + 12, 4)
         self.header = NestedBuffer(self, self.HEADER_SIZE)
         self.body = NestedBuffer(self, self.ENTRY_SIZE * self.count, buffer_offset=self.HEADER_SIZE)
         self.buffer_size = len(self.header) + len(self.body)
@@ -159,13 +159,18 @@ class Directory(NestedBuffer):
         self.header[8:12] = struct.pack('<I', self.count)
         self.update_checksum()
 
+    # 00b: x86 Physical address
+    # 01b: Offset from start of the BIOS (flash offset)
+    # 10b: Offset from start of directory header
+    # 11b: Offset from start of partition
     @property
     def address_mode(self):
-        rsvd = struct.unpack('=L', self.reserved)[0]
-        return (rsvd & 0x60000000) >> 29 if rsvd != 0 else None
-    # todo: do we need to still consider the address_mode somewhere?
-    #   at the moment we seem to be running fine by checking entry.rsv0 & (1 << 30) to figure out if we need
-    #   directory-relative or absolute addressing
+        info = struct.unpack('<L', self.additional_info)[0]
+        version = (info >> 31) & 1
+        if version == 1:
+            return (info >> 24) & 3
+        else:
+            return (info >> 29) & 3
 
     def verify_checksum(self):
         data = self[0x8:]
