@@ -44,7 +44,7 @@ class File(NestedBuffer):
             file = cls.from_entry(directory, directory.parent_buffer, entry, directory.rom, directory.psptool)
             if file is not None:
                 return file
-        elif entry.file_offset() in cls.files_by_offset:
+        elif entry.file_offset() in directory.psptool.files_by_offset:
             existing_file = directory.psptool.files_by_offset[entry.file_offset()]
             existing_file.references.append(directory)
             return existing_file
