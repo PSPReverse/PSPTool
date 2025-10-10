@@ -31,10 +31,6 @@ class Directory(NestedBuffer):
     ENTRY_SIZE = DirectoryEntry.ENTRY_SIZE
     FILE_CLASS = File
 
-    # all directories by offset in rom
-    # todo: what if we have multi-ROM? then two ROMs share this singleton!
-    directories_by_offset = {}
-
     class ParseError(Exception):
         pass
 
@@ -45,14 +41,15 @@ class Directory(NestedBuffer):
     @classmethod
     def create_directories_if_not_exist(cls, offset, fet, zen_generation=None) -> List['Directory']:
         # Recursively return or create and return found directories
-        if offset in cls.directories_by_offset:
-            return [cls.directories_by_offset[offset]]
+
+        if offset in fet.psptool.directories_by_offset:
+            return [fet.psptool.directories_by_offset[offset]]
         else:
             # 1. Create the immediate directory in front of us
             created_directories = []
             try:
                 directory = cls.from_offset(fet, offset, zen_generation)
-                cls.directories_by_offset[offset] = directory
+                fet.psptool.directories_by_offset[offset] = directory
                 created_directories.append(directory)
             except Directory.ParseError as e:
                 # Handle empty entries gracefully (like master branch)

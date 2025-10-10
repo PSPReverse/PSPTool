@@ -40,6 +40,9 @@ class PSPTool:
     def __init__(self, rom_bytes, verbose=False, filename=None):
         self.filename = filename
         self.ph = PrintHelper(verbose)
+        
+        self.directories_by_offset: Dict[int, 'Directory'] = {}
+        self.files_by_offset: Dict[int, 'File'] = {}
 
         self.blob = Blob(rom_bytes, len(rom_bytes), self)
         self.cert_tree = CertificateTree.from_blob(self.blob, self)
