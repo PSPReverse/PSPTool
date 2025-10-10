@@ -105,7 +105,14 @@ class Fet(NestedBuffer):
             entry_addr = int.from_bytes(entry, 'little')
             if entry_addr in [0, 0xFFFFFFFF]:
                 continue
-            entry_addr &= self.rom.addr_mask
+            # if ROM is bigger than 16MB, we have to override the mask for
+            # physical address
+            rom_size = self.rom.addr_mask + 1
+            if entry_addr > 0xFF000000 and rom_size > 16 * 1024 * 1024:
+                entry_addr &= 0x00FFFFFF
+            else:
+                entry_addr &= self.rom.addr_mask
+
             # entry_addr += self.blob_offset
             zen_generation_id = combo_dir[i*16+5:i*16+8]
             zen_generation = 'unknown'
