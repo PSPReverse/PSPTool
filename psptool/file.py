@@ -287,7 +287,19 @@ class File(NestedBuffer):
         else:
             self.compressed = False
 
-        if parent_buffer.buffer_size >= offset + entry.size:
+        # For entries without size, create buffer of directory entry size
+        # at offset in directory
+        if self.type in self.NO_SIZE_ENTRY_TYPES:
+            dir_start = parent_directory.buffer_offset + parent_directory.HEADER_SIZE
+            try:
+                super().__init__(parent_buffer, entry.ENTRY_SIZE, dir_start + entry.entry_offset)
+            except AssertionError as e:
+                raise File.ParseError(e)
+        # Some images break the rule of placing components on 16MB boundary.
+        # Use entry.offset to get real offset in flash, not masked to 16MB to
+        # detect entries that would overflow parent buffer. Because of this
+        # the compressed entries cannot be uncompressed.
+        elif parent_buffer.buffer_size >= entry.offset + entry.size:
             try:
                 super().__init__(parent_buffer, entry.size, buffer_offset=offset)
             except AssertionError as e:
