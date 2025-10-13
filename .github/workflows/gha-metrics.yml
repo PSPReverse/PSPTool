@@ -1,0 +1,33 @@
+name: Post metrics comment
+
+on: [pull_request]
+
+jobs:
+  test:
+
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.9"]
+
+    steps:
+      - uses: actions/checkout@v3
+        with:
+           submodules: recursive
+           ssh-key: ${{ secrets.PSPTOOL_FIXTURES_NEW_PRIVATE_KEY }}
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v3
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install .
+      - name: Run metrics and post comment
+        run: |
+          python tests/gha_metrics.py > metrics.md
+          gh pr comment $PRNUM --body-file metrics.md
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          PRNUM: ${{ github.event.pull_request.number }}
