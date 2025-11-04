@@ -296,7 +296,7 @@ class File(NestedBuffer):
         # Use entry.offset to get real offset in flash, not masked to 16MB to
         # detect entries that would overflow parent buffer. Because of this
         # the compressed entries cannot be uncompressed.
-        elif parent_buffer.buffer_size >= entry.offset + entry.size:
+        elif parent_buffer.buffer_size >= entry.file_offset() + entry.size:
             try:
                 super().__init__(parent_buffer, entry.size, buffer_offset=offset)
             except AssertionError as e:
