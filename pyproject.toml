@@ -1,0 +1,17 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "psptool"
+version = "3.1"
+authors = [{name = "Christian Werling", email = "cwerling@posteo.de"}]
+description = "PSPTool is a tool for dealing with AMD binary blobs"
+requires-python = ">=3.8"
+dependencies = [
+    "cryptography>=38.0.0",
+    "prettytable",
+]
+
+[project.scripts]
+psptool = "psptool.__main__:main"
