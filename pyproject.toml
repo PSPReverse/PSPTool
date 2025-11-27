@@ -1,10 +1,10 @@
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"
 
 [project]
 name = "psptool"
-version = "3.1"
+dynamic = ["version"]
 authors = [{name = "Christian Werling", email = "cwerling@posteo.de"}]
 description = "PSPTool is a tool for dealing with AMD binary blobs"
 readme = "README.md"
@@ -16,3 +16,6 @@ dependencies = [
 
 [project.scripts]
 psptool = "psptool.__main__:main"
+
+[tool.hatch.version]
+source = "vcs"
