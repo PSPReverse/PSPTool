@@ -179,13 +179,6 @@ class Blob(NestedBuffer):
             found_pkes += self._find_inline_pubkeys(key_id)
         return found_pkes
 
-    def get_entries_by_type(self, type_) -> List[File]:
-        entries = []
-
-        for rom in self.roms:
-            for _dir in rom.directories:
-                for entry in _dir.entries:
-                    if entry.type == type_:
-                        entries.append(entry)
-
-        return entries
+    def get_files_by_type(self, type_) -> List[File]:
+        all_files = self.unique_files()
+        return list(filter(lambda f: f.type == type_, all_files))

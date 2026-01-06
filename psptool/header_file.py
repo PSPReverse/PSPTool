@@ -132,7 +132,7 @@ class HeaderFile(File):
         return '.'.join([hex(b)[2:].upper() for b in self.version])
 
     def get_ikek_md5sum(self) -> bytes:
-        ikek = self.parent_buffer.get_entries_by_type(0x21)[0]
+        ikek = self.parent_buffer.get_files_by_type(0x21)[0]
         m = md5()
         m.update(ikek.get_bytes())
         return m.digest()
