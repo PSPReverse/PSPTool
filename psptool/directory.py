@@ -192,7 +192,7 @@ class Directory(NestedBuffer):
         # 2. Update fields
         entry.type = type_
         entry.size = size
-        entry.offset = offset
+        entry.offset = offset - self.get_address()
         # todo: allow updating the address_mode which consists of two bytes right here
 
         # 3. Update checksum
