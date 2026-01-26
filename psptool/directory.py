@@ -31,6 +31,22 @@ class Directory(NestedBuffer):
     ENTRY_SIZE = DirectoryEntry.ENTRY_SIZE
     FILE_CLASS = File
 
+    ZEN_GENERATION_IDS = {'Zen 1'  : [b'\x00\x09\xBC', b'\x00\x0A\xBC'],
+                          'Zen 2'  : [b'\x05\x0B\xBC', b'\x01\x0A\xBC'],
+                          'Zen 3'  : [b'\x01\x0C\xBC', b'\x00\x0C\xBC'],
+                          'Zen 4'  : [b'\x04\x0D\xBC', b'\x0B\x0D\xBC'],
+                          'Zen 4/5': [b'\x03\x0D\xBC']
+                         }
+
+    @classmethod
+    def get_possible_zen_generation(cls, zen_generation_id):
+        zen_generation = 'unknown'
+        for possible_zen_generation in cls.ZEN_GENERATION_IDS:
+            if zen_generation_id in cls.ZEN_GENERATION_IDS[possible_zen_generation]:
+                zen_generation = possible_zen_generation
+
+        return zen_generation
+
     class ParseError(Exception):
         pass
 
@@ -43,6 +59,7 @@ class Directory(NestedBuffer):
         # Recursively return or create and return found directories
 
         if offset in fet.psptool.directories_by_offset:
+            fet.psptool.directories_by_offset[offset].update_zen_generation(fet, zen_generation)
             return [fet.psptool.directories_by_offset[offset]]
         else:
             # 1. Create the immediate directory in front of us
@@ -69,6 +86,14 @@ class Directory(NestedBuffer):
             for tertiary_directory_offset in directory.tertiary_directory_offsets:
                 directory_body = fet.rom.get_bytes(tertiary_directory_offset, 32)
                 actual_tertiary_offset = int.from_bytes(directory_body[16:20], 'little')
+                zen_generation_id = directory_body[21:24]
+                zen_generation = cls.get_possible_zen_generation(zen_generation_id)
+                if zen_generation == 'unknown':
+                    fet.psptool.ph.print_warning(f"Unknown {zen_generation_id=}")
+
+                zen_generation_id = hex(int.from_bytes(directory_body[20:24], 'little'))
+                zen_generation += f' (PSP ID {zen_generation_id})'
+
                 # Resolve one more indirection
                 tertiary_directories = cls.create_directories_if_not_exist(actual_tertiary_offset, fet, zen_generation)
                 created_directories += tertiary_directories
@@ -197,6 +222,14 @@ class Directory(NestedBuffer):
 
         # 3. Update checksum
         self.update_checksum()
+
+    def update_zen_generation(self, fet, zen_generation):
+        if zen_generation is not None:
+            if zen_generation not in self.zen_generation:
+                self.zen_generation += '\n' + zen_generation
+                for offset in self.secondary_directory_offsets:
+                    dir = fet.psptool.directories_by_offset[offset]
+                    dir.update_zen_generation(fet, zen_generation)
 
 
 class BiosDirectory(Directory):

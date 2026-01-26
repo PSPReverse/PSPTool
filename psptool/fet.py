@@ -19,12 +19,6 @@ from .directory import Directory
 
 from typing import List
 
-
-ZEN_GENERATION_IDS = {'Zen 1': [b'\x00\x09\xBC', b'\x00\x0A\xBC'],
-                      'Zen 2': [b'\x05\x0B\xBC', b'\x01\x0A\xBC'],
-                      'Zen 3': [b'\x01\x0C\xBC', b'\x00\x0C\xBC']}
-
-
 class EmptyFet(Exception):
     pass
 
@@ -121,12 +115,12 @@ class Fet(NestedBuffer):
 
             # entry_addr += self.blob_offset
             zen_generation_id = combo_dir[i*16+5:i*16+8]
-            zen_generation = 'unknown'
-            for possible_zen_generation in ZEN_GENERATION_IDS:
-                if zen_generation_id in ZEN_GENERATION_IDS[possible_zen_generation]:
-                    zen_generation = possible_zen_generation
+            zen_generation = Directory.get_possible_zen_generation(zen_generation_id)
             if zen_generation == 'unknown':
                 self.psptool.ph.print_warning(f"Unknown {zen_generation_id=}")
+
+            zen_generation_id = hex(combo_dir[i*16+4:i*16+8])
+            zen_generation += f' (PSP ID {zen_generation_id})'
 
             results.append((entry_addr, zen_generation))
 
