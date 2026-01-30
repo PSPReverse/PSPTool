@@ -1,6 +1,6 @@
 name: Python tests
 
-on: [push]
+on: [push, pull_request_target]
 
 jobs:
   test:
@@ -13,6 +13,7 @@ jobs:
     steps:
       - uses: actions/checkout@v3
         with:
+          ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
           submodules: recursive
           ssh-key: ${{ secrets.PSPTOOL_FIXTURES_NEW_PRIVATE_KEY }}
       - name: Set up Python ${{ matrix.python-version }}
