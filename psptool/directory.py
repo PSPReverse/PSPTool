@@ -212,7 +212,10 @@ class Directory(NestedBuffer):
             if my_entry.type == file.type:
                 entry = my_entry
                 break
-        assert(entry is not None)
+        assert (entry is not None)
+
+        if entry.address_mode == 2 or entry.address_mode == 3:
+            offset -= self.buffer_offset
 
         # 2. Update fields
         entry.type = type_
