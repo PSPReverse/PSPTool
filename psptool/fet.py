@@ -119,7 +119,7 @@ class Fet(NestedBuffer):
             if zen_generation == 'unknown':
                 self.psptool.ph.print_warning(f"Unknown {zen_generation_id=}")
 
-            zen_generation_id = hex(combo_dir[i*16+4:i*16+8])
+            zen_generation_id = hex(int.from_bytes(combo_dir[i*16+4:i*16+8], byteorder='little'))
             zen_generation += f' (PSP ID {zen_generation_id})'
 
             results.append((entry_addr, zen_generation))
