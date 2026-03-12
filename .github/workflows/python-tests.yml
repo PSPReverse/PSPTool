@@ -1,31 +1,60 @@
 name: Python tests
 
-on: [push, pull_request_target]
+on:
+  push:
+    branches: [master]
+  pull_request_target:
 
 jobs:
-  test:
-
+  get-fixtures:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: ["3.8", "3.9"]
-
     steps:
-      - uses: actions/checkout@v3
+      - name: Get fixtures
+        uses: actions/checkout@v6
         with:
-          ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
           submodules: recursive
           ssh-key: ${{ secrets.PSPTOOL_FIXTURES_NEW_PRIVATE_KEY }}
+
+      - name: Save fixtures
+        uses: actions/upload-artifact@v7
+        with:
+          name: saved-fixtures
+          path: tests/integration/fixtures
+
+  test:
+    needs: get-fixtures
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+
+    steps:
+      - name: Checkout PR
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
+
+      - name: Download fixtures
+        uses: actions/download-artifact@v8
+        with:
+          name: saved-fixtures
+          path: tests/integration/fixtures
+
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v3
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install flake8
           pip install psptrace  # for integration tests
           pip install .
+
       - name: Lint with flake8
         run: |
           # stop the build if there are Python syntax errors or undefined names
@@ -35,3 +64,72 @@ jobs:
       - name: Test with unittest
         run: |
           python -m unittest discover -s tests -v
+
+  create-metrics:
+    runs-on: ubuntu-latest
+    needs: get-fixtures
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout PR
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
+
+      - name: Download fixtures
+        uses: actions/download-artifact@v8
+        with:
+          name: saved-fixtures
+          path: tests/integration/fixtures
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install .
+
+      - name: Create Metrics
+        run: |
+          python tests/gha_metrics.py > metrics.md
+          cat metrics.md >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload metrics
+        if: github.event_name == 'pull_request_target'
+        uses: actions/upload-artifact@v7
+        with:
+          name: metrics-data
+          path: metrics.md
+
+  comment-metrics:
+    if: github.event_name == 'pull_request_target'
+    runs-on: ubuntu-latest
+    needs: create-metrics
+    permissions:
+      pull-requests: write
+      actions: read
+    steps:
+      - name: Download metrics
+        uses: actions/download-artifact@v8
+        with:
+          name: metrics-data
+
+      - name: Post comment
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+             MARKER="<!-- PSPTOOL-METRICS-MARKER -->"
+             COMMENT_ID=$(gh api "repos/$GH_REPO/issues/$PR_NUMBER/comments" --jq ".[] | select(.body | contains(\"$MARKER\")) | .id" | head -n 1)
+
+             if [ -n "$COMMENT_ID" ]; then
+               gh api -X PATCH "repos/$GH_REPO/issues/comments/$COMMENT_ID" --field body=@metrics.md
+             else
+               gh pr comment "$PR_NUMBER" --body-file metrics.md
+             fi
+
