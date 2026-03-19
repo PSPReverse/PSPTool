@@ -118,18 +118,18 @@ jobs:
         with:
           name: metrics-data
 
-      - name: Post comment
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GH_REPO: ${{ github.repository }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: |
-             MARKER="<!-- PSPTOOL-METRICS-MARKER -->"
-             COMMENT_ID=$(gh api "repos/$GH_REPO/issues/$PR_NUMBER/comments" --jq ".[] | select(.body | contains(\"$MARKER\")) | .id" | head -n 1)
+      - name: find comment
+        uses: peter-evans/find-comment@v4
+        id: fc
+        with:
+          issue-number: ${{ github.event.pull_request.number }}
+          comment-author: 'github-actions[bot]'
+          body-includes: '<!-- PSPTOOL-METRICS-MARKER -->'
 
-             if [ -n "$COMMENT_ID" ]; then
-               gh api -X PATCH "repos/$GH_REPO/issues/comments/$COMMENT_ID" --field body=@metrics.md
-             else
-               gh pr comment "$PR_NUMBER" --body-file metrics.md
-             fi
-
+      - name: create or update comment
+        uses: peter-evans/create-or-update-comment@v5
+        with:
+          comment-id: ${{ steps.fc.outputs.comment-id }}
+          issue-number: ${{ github.event.pull_request.number }}
+          body-path: metrics.md
+          edit-mode: replace
