@@ -20,6 +20,7 @@ jobs:
         with:
           name: saved-fixtures
           path: tests/integration/fixtures
+          retention-days: 1
 
   test:
     needs: get-fixtures
