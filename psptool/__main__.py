@@ -123,7 +123,8 @@ def main():
         '-r idx:  specifies rom_index (default: 0)',
         '-d idx:  specifies directory_index',
         '-e idx:  specifies file_index',
-        '-s file: specifies subfile (i.e. the new file contents)',
+        '-s file: specifies substitution file (i.e. the new file contents)',
+        '(optional to allow plain re-signs)',
         '-o file: specifies outfile',
         '-p file: specifies file-stub (e.g. \'keys/id\') for the re-signing keys',
         '-a pass: specifies password for the re-signing keys'
@@ -239,7 +240,7 @@ def main():
         if args.directory_index is not None and args.file_index is not None and args.outfile is not None:
             file = psp.blob.roms[args.rom_index].directories[args.directory_index].files[args.file_index]
 
-            # Substituting an file is actually optional to allow plain re-signs
+            # Substituting a file is actually optional to allow plain re-signs
             if args.subfile is not None:
                 with open(args.subfile, 'rb') as f:
                     sub_binary = f.read()

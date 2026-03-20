@@ -389,7 +389,7 @@ class File(NestedBuffer):
         current_address = self.get_address()
         move_offset = new_address - current_address
         self.buffer_offset += move_offset
-        self.buffer_size = int(ceil(size / self.ENTRY_ALIGNMENT)) * self.ENTRY_ALIGNMENT
+        self.buffer_size = size
 
         # update all directories' headers that point to this entry
         for directory in self.references:
