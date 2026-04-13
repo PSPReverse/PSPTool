@@ -248,9 +248,6 @@ class File(NestedBuffer):
 
     @classmethod
     def from_entry(cls, parent_directory, parent_buffer, entry, blob, psptool):
-        if entry.type in cls.NO_SIZE_ENTRY_TYPES:
-            entry.size = 0
-
         assert entry.file_offset() < len(parent_directory.rom), "File offset overflows ROM bounds!"
         file_args = [parent_directory, parent_buffer, entry.file_offset(), entry, blob, psptool]
 

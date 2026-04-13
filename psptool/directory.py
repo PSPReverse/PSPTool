@@ -216,8 +216,8 @@ class Directory(NestedBuffer):
 
         # 2. Update fields
         entry.type = type_
-        entry.size = size
-        # todo: not necessarily here, but make sure the 0xb SOFT_FUSE_CHAIN's special size of 0xFF... stays intact
+        if entry.type not in File.NO_SIZE_ENTRY_TYPES:
+            entry.size = size
 
         # Convert the ROM buffer offset back to the value the entry expects, preserving address mode.
         # This mirrors the inverse of file_offset() in entry.py.
