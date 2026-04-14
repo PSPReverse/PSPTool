@@ -71,7 +71,7 @@ class Directory(NestedBuffer):
             except Directory.ParseError as e:
                 # Handle empty entries gracefully (like master branch)
                 if "Empty entry" in str(e):
-                    fet.psptool.ph.print_warning(f"Skipping empty directory entry at offset 0{offset:x}")
+                    fet.psptool.ph.print_warning(f"Skipping empty directory entry at offset 0x{offset:x}")
                     return []
                 else:
                     # Re-raise other parse errors
