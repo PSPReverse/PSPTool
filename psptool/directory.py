@@ -216,9 +216,26 @@ class Directory(NestedBuffer):
 
         # 2. Update fields
         entry.type = type_
-        entry.size = size
-        entry.offset = offset
-        # todo: allow updating the address_mode which consists of two bytes right here
+        if entry.type not in File.NO_SIZE_ENTRY_TYPES:
+            entry.size = size
+
+        # Convert the ROM buffer offset back to the value the entry expects, preserving address mode.
+        # This mirrors the inverse of file_offset() in entry.py.
+        addr_mode = self.address_mode
+        if addr_mode == 2 or addr_mode == 3:
+            addr_mode = entry.address_mode
+
+        if addr_mode == 0:
+            # x86 physical: preserve upper bits (e.g. 0xFF000000), replace lower bits
+            addr_mask = self.rom.addr_mask
+            upper_mask = 0xFFFFFFFF ^ addr_mask
+            entry.offset = (entry.offset & upper_mask) | (offset & addr_mask)
+        elif addr_mode == 1:
+            entry.offset = offset
+        elif addr_mode == 2 or addr_mode == 3:
+            entry.offset = offset - self.buffer_offset
+        else:
+            entry.offset = offset
 
         # 3. Update checksum
         self.update_checksum()
