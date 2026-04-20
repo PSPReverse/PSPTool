@@ -47,6 +47,7 @@ class Blob(NestedBuffer):
             0xe20000,
             0xc20000,
             0x820000,
+            0x120000,
         ]
 
         possible_rom_sizes = [32, 16, 8]
