@@ -8,7 +8,7 @@ from psptool import PSPTool
 from psptool.header_file import HeaderFile
 
 dirname = os.path.dirname(__file__)
-rom_fixtures_path = os.path.join(dirname, 'fixtures/roms')
+rom_fixtures_path = os.path.join(dirname, 'fixtures/test_files')
 
 # todo: add extraction tests
 #  - extract entry and make sure it has the correct size
@@ -92,6 +92,65 @@ class TestRomFiles(unittest.TestCase):
                                         out_decrypted = entry.get_decrypted_decompressed_body()
                                     # Check that there were no warnings
                                     self.assertEqual(stderr_buf.getvalue(), "")
+
+
+class TestZenGenerationBackfill(unittest.TestCase):
+    # Maps fixture filename (relative to fixtures/roms) to the substring
+    # that must appear in zen_generation for every directory in the ROM.
+    # Single-generation EPYC images are the negative test set fixed by the
+    # PSP_FW_BOOT_LOADER back-fill path. Each entry corresponds to a row
+    # in issue.md's "Test ROMs — direct download URLs" section; SHA-256s
+    # there can be used to verify the unwrapped ROM matches.
+    EPYC_EXPECTATIONS = {
+        'ASUS_KRPA-U16-ASUS-4501.CAP':   'Zen 2',  # Rome (SP3)
+        'ASUS_KRPA-U16-M-ASUS-1002.CAP': 'Zen 3',  # Milan (SP3)
+        'ASUS_K14PA-U12-ASUS-2305.CAP':  'Zen 4',  # Genoa (SP5)
+        'ASUS_S14NA-U12-ASUS-0903.CAP':  'Zen 4',  # Siena (SP6); Zen 4c shares Zen 4 BL major
+        'Tyan_S8050GM4NE-2T_V3.04.rom':  'Zen 5',  # Turin (SP5)
+    }
+
+    def _find_fixture(self, basename):
+        for subdir, _dirs, files in os.walk(rom_fixtures_path):
+            if basename in files:
+                return os.path.join(subdir, basename)
+        return None
+
+    def test_epyc_zen_generation_set(self):
+        present = {n: p for n, p in
+                   ((n, self._find_fixture(n)) for n in self.EPYC_EXPECTATIONS)
+                   if p is not None}
+        if not present:
+            self.skipTest(
+                f"No EPYC fixtures present under {rom_fixtures_path}; "
+                f"this assertion activates after Test-PSPTool gains the EPYC "
+                f"corpus and the gitlink in this repo is bumped"
+            )
+        for name, path in present.items():
+            expected = self.EPYC_EXPECTATIONS[name]
+            with self.subTest(name):
+                with io.StringIO() as stderr_buf, contextlib.redirect_stderr(stderr_buf):
+                    pt = psptool.PSPTool.from_file(path)
+                self.assertTrue(len(pt.blob.roms) > 0, f"{name}: no ROMs parsed")
+                # Find at least one ROM whose directories all match the
+                # expected generation. Multi-ROM BIOSes (e.g. Tyan Turin
+                # ships a Genoa+Turin pair) may carry one ROM at a different
+                # generation, but the expected one must be present.
+                matching_roms = [
+                    r for r in pt.blob.roms
+                    if r.directories and all(
+                        d.zen_generation is not None and expected in d.zen_generation
+                        for d in r.directories
+                    )
+                ]
+                self.assertTrue(
+                    matching_roms,
+                    f"{name}: no ROM in the file has all directories tagged {expected!r}; "
+                    f"got "
+                    + repr([
+                        [d.zen_generation for d in r.directories]
+                        for r in pt.blob.roms
+                    ])
+                )
 
 
 if __name__ == '__main__':
