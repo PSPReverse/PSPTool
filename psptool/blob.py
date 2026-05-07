@@ -30,6 +30,22 @@ class Blob(NestedBuffer):
     _FIRMWARE_ENTRY_MAGIC = b'\xAA\x55\xAA\x55'
     # All structures per Rom must be in 16MB windows
     _MAX_PAGE_SIZE = 16 * 1024 * 1024
+
+    # ROM-relative offsets at which a FET may legitimately appear, in the
+    # try-order used by the parser (the loop breaks on first successful
+    # FET parse, so order is observable). As seen by a PSPTrace Zen 1
+    # boot. The first entry is the canonical position for compact images
+    # and is what the synthetic-fixture builder targets via [0].
+    POSSIBLE_FET_OFFSETS = (
+        0x020000,
+        0xfa0000,
+        0xf20000,
+        0xe20000,
+        0xc20000,
+        0x820000,
+        0x120000,
+    )
+
     class NoFirmwareEntryTableError(Exception):
         pass
 
@@ -39,17 +55,6 @@ class Blob(NestedBuffer):
         self.psptool = psptool
         self.roms: List[Rom] = []
 
-        possible_fet_offsets = [
-            # as seen by a PSPTrace Zen 1 boot
-            0x020000,
-            0xfa0000,
-            0xf20000,
-            0xe20000,
-            0xc20000,
-            0x820000,
-            0x120000,
-        ]
-
         possible_rom_sizes = [32, 16, 8]
         _rom_size = max(value for value in possible_rom_sizes if value * 1024 * 1024 <= self.buffer_size)
         rom_size = _rom_size * 1024 * 1024
@@ -58,7 +63,7 @@ class Blob(NestedBuffer):
         # For each FET, we try to create a 16MB ROM starting at `FET - offset`
         for fet_location in self._find_fets():
             fet_parsed = False
-            for fet_offset in possible_fet_offsets:
+            for fet_offset in self.POSSIBLE_FET_OFFSETS:
                 if fet_location < fet_offset:
                     # would lead to Blob underflow
                     continue

@@ -38,6 +38,22 @@ class Directory(NestedBuffer):
                           'Zen 4/5': [b'\x03\x0D\xBC']
                          }
 
+    # Empirical mapping from PSP_FW_BOOT_LOADER (entry type 0x01) version
+    # major byte to Zen generation. Used as a third detection path for
+    # single-generation ROMs (e.g. EPYC server BIOSes) that have neither a
+    # 2PSP combo directory nor a tertiary self-tag and so hit neither of the
+    # existing zen_generation paths. Source for the majors below: the
+    # Test-PSPTool corpus and its bootloader_overview.py table, plus the
+    # original issue's empirical scrape across 37 EPYC ROMs.
+    BOOTLOADER_VERSION_TO_ZEN = {
+        0x07: 'Zen 1',                # Naples server (NaplesPI-SP3): H11DSI, MZ31-AR, S8026
+        0x09: 'Zen 1', 0x0A: 'Zen 1', # Naples / Raven Ridge consumer
+        0x0B: 'Zen 2', 0x0C: 'Zen 2', # Rome
+        0x13: 'Zen 3',                # Milan
+        0x29: 'Zen 4',                # Genoa, Siena (Zen 4c shares the major)
+        0x3D: 'Zen 5',                # Turin (Bergamo also lands here per the issue)
+    }
+
     @classmethod
     def get_possible_zen_generation(cls, zen_generation_id):
         zen_generation = 'unknown'
