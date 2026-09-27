@@ -109,6 +109,33 @@ class TestRomLayouts(unittest.TestCase):
         self.assertEqual(pt.blob.roms[0].addr_mask, 32 * MB - 1)
         self.assertEqual({type_ for type_, _ in files(pt)}, {0x01})
 
+    def test_l2_pointer_straight_at_directory(self):
+        l2_offset = FET_OFFSET + 0x4000
+        file_offset = FET_OFFSET + 0x5000
+        data = rom(8 * MB, [(0x48, 0x400, l2_offset)], [
+            (l2_offset, directory(b'$PL2', [(0x01, HEADER_FILE_SIZE, file_offset)])),
+            (file_offset, header_file()),
+        ])
+        pt, _ = parse(data)
+        magics = [d.magic for d in pt.blob.roms[0].directories]
+        self.assertEqual(magics, [b'$PSP', b'$PL2'])
+        self.assertIn((0x01, file_offset), files(pt))
+
+    def test_l2_reached_directly_and_through_ish(self):
+        l2_offset = FET_OFFSET + 0x4000
+        ish_offset = FET_OFFSET + 0x3000
+        file_offset = FET_OFFSET + 0x5000
+        ish = bytes(16) + struct.pack('<I', l2_offset) + b'\x00\x01\x0C\xBC'
+        data = rom(8 * MB, [(0x48, 0x400, l2_offset), (0x4a, 0x20, ish_offset)], [
+            (ish_offset, ish),
+            (l2_offset, directory(b'$PL2', [(0x01, HEADER_FILE_SIZE, file_offset)])),
+            (file_offset, header_file()),
+        ])
+        pt, _ = parse(data)
+        directories = pt.blob.roms[0].directories
+        self.assertEqual([d.magic for d in directories], [b'$PSP', b'$PL2'])
+        self.assertEqual(directories[1].zen_generation, 'Zen 3 (PSP ID 0xbc0c0100)')
+
 
 if __name__ == '__main__':
     unittest.main()
