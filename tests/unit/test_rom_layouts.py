@@ -136,6 +136,23 @@ class TestRomLayouts(unittest.TestCase):
         self.assertEqual([d.magic for d in directories], [b'$PSP', b'$PL2'])
         self.assertEqual(directories[1].zen_generation, 'Zen 3 (PSP ID 0xbc0c0100)')
 
+    def test_header_size_past_rom_skips_file(self):
+        bad_offset = FET_OFFSET + 0x4000
+        good_offset = FET_OFFSET + 0x5000
+        data = rom(8 * MB, [
+            (0x01, HEADER_FILE_SIZE, bad_offset),
+            (0x73, HEADER_FILE_SIZE, good_offset),
+        ], [
+            (bad_offset, header_file(rom_size=0x6b20796e)),
+            (good_offset, header_file(rom_size=2 * HEADER_FILE_SIZE)),
+        ])
+        pt, warnings = parse(data)
+        self.assertIn('overflows the parent buffer', warnings)
+        self.assertEqual(files(pt), {(0x73, good_offset)})
+        # A header size past the entry size but inside the ROM still counts
+        (good,) = pt.blob.unique_files()
+        self.assertEqual(good.buffer_size, 2 * HEADER_FILE_SIZE)
+
 
 if __name__ == '__main__':
     unittest.main()
