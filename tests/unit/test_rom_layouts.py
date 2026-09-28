@@ -14,6 +14,8 @@
   a header holding its offset (L13 Gen 4).
 - A BIOS directory entry holding a plain PE image, whose bytes at the
   header's size field are text (L13 Gen 4).
+- A 0x4a slot header pointing at an APCB rather than at a $PL2 directory
+  (T14 Gen 7 AMD).
 """
 
 import contextlib
@@ -152,6 +154,26 @@ class TestRomLayouts(unittest.TestCase):
         # A header size past the entry size but inside the ROM still counts
         (good,) = pt.blob.unique_files()
         self.assertEqual(good.buffer_size, 2 * HEADER_FILE_SIZE)
+
+    def test_slot_header_pointing_at_non_directory_is_skipped(self):
+        ish_a = FET_OFFSET + 0x2000
+        ish_b = FET_OFFSET + 0x3000
+        l2_offset = FET_OFFSET + 0x4000
+        apcb_offset = FET_OFFSET + 0x6000
+        file_offset = FET_OFFSET + 0x5000
+        zen_id = b'\x00\x01\x0C\xBC'
+        data = rom(8 * MB, [(0x48, 0x20, ish_a), (0x4a, 0x20, ish_b)], [
+            (ish_a, bytes(16) + struct.pack('<I', l2_offset) + zen_id),
+            (ish_b, bytes(16) + struct.pack('<I', apcb_offset) + zen_id),
+            (l2_offset, directory(b'$PL2', [(0x01, HEADER_FILE_SIZE, file_offset)])),
+            (apcb_offset, b'APCB' + bytes(12)),
+            (file_offset, header_file()),
+        ])
+        pt, warnings = parse(data)
+        self.assertIn('Unknown directory magic', warnings)
+        magics = [d.magic for d in pt.blob.roms[0].directories]
+        self.assertEqual(magics, [b'$PSP', b'$PL2'])
+        self.assertIn((0x01, file_offset), files(pt))
 
 
 if __name__ == '__main__':

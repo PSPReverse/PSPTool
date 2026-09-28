@@ -89,9 +89,9 @@ class Directory(NestedBuffer):
                 if "Empty entry" in str(e):
                     fet.psptool.ph.print_warning(f"Skipping empty directory entry at offset 0x{offset:x}")
                     return []
-                else:
-                    # Re-raise other parse errors
-                    raise
+                # Some slot headers point at other data, such as an APCB
+                fet.psptool.ph.print_warning(f"Skipping non-directory at offset 0x{offset:x}")
+                return []
 
             # 2. Recursively add secondary directories referenced by the just created directory, if applicable
             for secondary_directory_offset in directory.secondary_directory_offsets:
