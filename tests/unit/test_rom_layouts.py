@@ -16,6 +16,8 @@
   header's size field are text (L13 Gen 4).
 - A 0x4a slot header pointing at an APCB rather than at a $PL2 directory
   (T14 Gen 7 AMD).
+- An x86 physical address with entry address mode 0 in a directory with
+  address mode 1, as coreboot writes APOB NV entries (StarBook Mk VI AMD).
 """
 
 import contextlib
@@ -174,6 +176,13 @@ class TestRomLayouts(unittest.TestCase):
         magics = [d.magic for d in pt.blob.roms[0].directories]
         self.assertEqual(magics, [b'$PSP', b'$PL2'])
         self.assertIn((0x01, file_offset), files(pt))
+
+    def test_physical_address_in_flash_offset_directory(self):
+        file_offset = FET_OFFSET + 0x4000
+        data = rom(16 * MB, [(0x01, HEADER_FILE_SIZE, 0xFF000000 + file_offset)],
+                   [(file_offset, header_file())])
+        pt, _ = parse(data)
+        self.assertEqual(files(pt), {(0x01, file_offset)})
 
 
 if __name__ == '__main__':
