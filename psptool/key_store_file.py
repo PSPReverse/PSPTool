@@ -81,9 +81,13 @@ class KeyStoreFileHeader(NestedBuffer):
 
         self.certifying_id = KeyId(self, 0x10, buffer_offset=0x38)
 
-        self._unknown_constant_1 = NestedBuffer(self, 0x4, buffer_offset=0x30)
-        self._unknown_constant_2 = NestedBuffer(self, 0x4, buffer_offset=0x34)
-        assert self.unknown_constants == (b'\1\0\0\0', b'\2\0\0\0')
+        # Same fields as in a HeaderFile. Early Renoir key stores leave the
+        # signature type at 0 next to a 0x200 byte signature, so
+        # signature_size is derived from the sizes instead.
+        self._signed = NestedBuffer(self, 0x4, buffer_offset=0x30)
+        self._signature_type = NestedBuffer(self, 0x4, buffer_offset=0x34)
+        assert self.signed == 1
+        assert self.signature_type in {0, 2}
 
         self._keystore_type = NestedBuffer(self, 0x4, buffer_offset=0x7c)
         assert self.keystore_type in File.KEY_STORE_TYPES or self.keystore_type == 0
@@ -130,11 +134,12 @@ class KeyStoreFileHeader(NestedBuffer):
             return self.parent_buffer.buffer_size - self.body_size - self.HEADER_SIZE
 
     @property
-    def unknown_constants(self) -> (bytes, bytes, bytes):
-        return (
-                self._unknown_constant_1.get_bytes(),
-                self._unknown_constant_2.get_bytes(),
-                )
+    def signed(self) -> int:
+        return int.from_bytes(self._signed.get_bytes(), 'little')
+
+    @property
+    def signature_type(self) -> int:
+        return int.from_bytes(self._signature_type.get_bytes(), 'little')
 
 
 class KeyStore(NestedBuffer):
