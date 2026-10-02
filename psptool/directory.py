@@ -227,7 +227,7 @@ class Directory(NestedBuffer):
 
     def update_checksum(self):
         data = self[0x8:]  # checksum is calculated from after the checksum field in the header
-        self.checksum.set_bytes(0, 4, fletcher32(data))
+        self.checksum.set_bytes(0, fletcher32(data))
 
     def update_entry_fields(self, file: File, type_, size, offset):
         # 1. Find respective Entry for a given File

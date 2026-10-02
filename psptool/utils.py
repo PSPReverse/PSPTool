@@ -106,8 +106,8 @@ class NestedBuffer:
         size = self.buffer_size if size is None else size
         return bytes(self[offset:offset + size])
 
-    def set_bytes(self, address: int, size: int, value):
-        assert len(value) == size, "set_bytes: value length does not match size argument"
+    def set_bytes(self, address: int, value: bytes):
+        size = len(value)
         self[address:address + size] = value
 
     def get_chunks(self, size: int, offset: int = 0):

@@ -80,7 +80,7 @@ class DirectoryEntry(NestedBuffer):
 
     @type.setter
     def type(self, value):
-        self.set_bytes(0, 1, struct.pack('<B', value))
+        self.set_bytes(0, struct.pack('<B', value))
 
     @property
     def subprogram(self):
@@ -88,7 +88,7 @@ class DirectoryEntry(NestedBuffer):
 
     @subprogram.setter
     def subprogram(self, value):
-        self.set_bytes(1, 1, struct.pack('<B', value))
+        self.set_bytes(1, struct.pack('<B', value))
 
     @property
     def flags(self):
@@ -96,7 +96,7 @@ class DirectoryEntry(NestedBuffer):
 
     @flags.setter
     def flags(self, value):
-        self.set_bytes(2, 2, struct.pack('<H', value))
+        self.set_bytes(2, struct.pack('<H', value))
 
     @property
     def instance(self):
@@ -112,7 +112,7 @@ class DirectoryEntry(NestedBuffer):
 
     @size.setter
     def size(self, value):
-        self.set_bytes(4, 4, struct.pack('<I', value))
+        self.set_bytes(4, struct.pack('<I', value))
 
     @property
     def offset(self):
@@ -120,7 +120,7 @@ class DirectoryEntry(NestedBuffer):
 
     @offset.setter
     def offset(self, value):
-        self.set_bytes(8, 4, struct.pack('<I', value))
+        self.set_bytes(8, struct.pack('<I', value))
 
     @property
     def rsv0(self):
@@ -128,7 +128,7 @@ class DirectoryEntry(NestedBuffer):
 
     @rsv0.setter
     def rsv0(self, value):
-        self.set_bytes(12, 4, struct.pack('<I', value))
+        self.set_bytes(12, struct.pack('<I', value))
 
     # 00b: x86 Physical address
     # 01b: Offset from start of the BIOS (flash offset)
@@ -150,7 +150,7 @@ class BiosDirectoryEntry(DirectoryEntry):
 
     @destination.setter
     def destination(self, value):
-        self.set_bytes(16, 8, struct.pack('<Q', value))
+        self.set_bytes(16, struct.pack('<Q', value))
 
     @property
     def region_type(self):
@@ -158,7 +158,7 @@ class BiosDirectoryEntry(DirectoryEntry):
 
     @region_type.setter
     def region_type(self, value):
-        self.set_bytes(1, 1, struct.pack('<B', value))
+        self.set_bytes(1, struct.pack('<B', value))
 
     @property
     def flags(self):
@@ -166,7 +166,7 @@ class BiosDirectoryEntry(DirectoryEntry):
 
     @flags.setter
     def flags(self, value):
-        self.set_bytes(2, 2, struct.pack('<H', value))
+        self.set_bytes(2, struct.pack('<H', value))
 
     @property
     def subprogram(self):

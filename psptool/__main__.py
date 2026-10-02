@@ -246,7 +246,7 @@ def main():
                     sub_binary = f.read()
                 # Keep the existing file's address, but adapt its size
                 file.move_buffer(file.get_address(), len(sub_binary))
-                file.set_bytes(0, len(sub_binary), sub_binary)
+                file.set_bytes(0, sub_binary)
 
             privkeys = None
             if args.privkeystub:
