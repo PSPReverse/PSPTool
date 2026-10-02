@@ -51,3 +51,26 @@ jobs:
         path: dist/
     - name: Publish distribution to PyPI
       uses: pypa/gh-action-pypi-publish@release/v1
+
+  github-release:
+    name: Create GitHub Release
+    needs:
+    - publish-to-pypi
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # needed to create GitHub releases
+    steps:
+    - name: Download all the dists
+      uses: actions/download-artifact@v8
+      with:
+        name: python-package-distributions
+        path: dist/
+    - name: Create GitHub Release
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+      run: >-
+        gh release create
+        "${{ github.ref_name }}"
+        --repo "${{ github.repository }}"
+        --generate-notes
+        dist/*
