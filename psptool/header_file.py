@@ -63,6 +63,10 @@ class HeaderFile(File):
         if self.has_sha256_checksum and self.has_sha384_checksum:
             raise File.ParseError('File should not have both sha256 and sha384 checksum bits set!')
 
+        if self.buffer_offset + self.rom_size > self.parent_buffer.buffer_size:
+            raise File.ParseError(f'Header size 0x{self.rom_size:x} overflows the parent buffer, '
+                                  f'likely not a PSP header')
+
         if self.rom_size == 0:
             self.rom_size = self.buffer_size
         elif self.rom_size > self.buffer_size:
