@@ -194,7 +194,7 @@ def main():
                         if args.decompress and type(file) is HeaderFile:
                             out_bytes = file.get_signed_bytes()
                         elif args.decrypt and type(file) is HeaderFile:
-                            out_bytes = file.get_decrypted()
+                            out_bytes = file.get_decrypted_body()
                         elif args.pem_key and type(file) is PubkeyFile:
                             out_bytes = file.get_pem_encoded()
                         else:
@@ -217,7 +217,7 @@ def main():
                     if args.decompress and type(file) is HeaderFile:
                         out_bytes = file.get_signed_bytes()
                     elif args.decrypt and type(file) is HeaderFile:
-                        out_bytes = file.get_decrypted()
+                        out_bytes = file.get_decrypted_body()
                     elif args.pem_key and type(file) is PubkeyFile:
                         out_bytes = file.get_pem_encoded()
                     else:

@@ -38,6 +38,22 @@ class Directory(NestedBuffer):
                           'Zen 4/5': [b'\x03\x0D\xBC']
                          }
 
+    # Empirical mapping from PSP_FW_BOOT_LOADER (entry type 0x01) version
+    # major byte to Zen generation. Used as a third detection path for
+    # single-generation ROMs (e.g. EPYC server BIOSes) that have neither a
+    # 2PSP combo directory nor a tertiary self-tag and so hit neither of the
+    # existing zen_generation paths. Source for the majors below: the
+    # Test-PSPTool corpus and its bootloader_overview.py table, plus the
+    # original issue's empirical scrape across 37 EPYC ROMs.
+    BOOTLOADER_VERSION_TO_ZEN = {
+        0x07: 'Zen 1',                # Naples server (NaplesPI-SP3): H11DSI, MZ31-AR, S8026
+        0x09: 'Zen 1', 0x0A: 'Zen 1', # Naples / Raven Ridge consumer
+        0x0B: 'Zen 2', 0x0C: 'Zen 2', # Rome
+        0x13: 'Zen 3',                # Milan
+        0x29: 'Zen 4',                # Genoa, Siena (Zen 4c shares the major)
+        0x3D: 'Zen 5',                # Turin (Bergamo also lands here per the issue)
+    }
+
     @classmethod
     def get_possible_zen_generation(cls, zen_generation_id):
         zen_generation = 'unknown'
@@ -73,9 +89,9 @@ class Directory(NestedBuffer):
                 if "Empty entry" in str(e):
                     fet.psptool.ph.print_warning(f"Skipping empty directory entry at offset 0x{offset:x}")
                     return []
-                else:
-                    # Re-raise other parse errors
-                    raise
+                # Some slot headers point at other data, such as an APCB
+                fet.psptool.ph.print_warning(f"Skipping non-directory at offset 0x{offset:x}")
+                return []
 
             # 2. Recursively add secondary directories referenced by the just created directory, if applicable
             for secondary_directory_offset in directory.secondary_directory_offsets:
@@ -85,17 +101,26 @@ class Directory(NestedBuffer):
             # 3. Recursively add tertiary directories (double references introduced in Zen 4), if applicable
             for tertiary_directory_offset in directory.tertiary_directory_offsets:
                 directory_body = fet.rom.get_bytes(tertiary_directory_offset, 32)
+
+                # Some ROMs point straight at the L2 directory instead of at a
+                # header holding its offset, so there is nothing to resolve
+                if directory_body[:4] in cls.DIRECTORY_MAGICS + BiosDirectory.DIRECTORY_MAGICS:
+                    created_directories += cls.create_directories_if_not_exist(
+                        tertiary_directory_offset, fet, zen_generation)
+                    continue
+
                 actual_tertiary_offset = int.from_bytes(directory_body[16:20], 'little')
                 zen_generation_id = directory_body[21:24]
-                zen_generation = cls.get_possible_zen_generation(zen_generation_id)
-                if zen_generation == 'unknown':
+                tertiary_zen_generation = cls.get_possible_zen_generation(zen_generation_id)
+                if tertiary_zen_generation == 'unknown':
                     fet.psptool.ph.print_warning(f"Unknown {zen_generation_id=}")
 
                 zen_generation_id = hex(int.from_bytes(directory_body[20:24], 'little'))
-                zen_generation += f' (PSP ID {zen_generation_id})'
+                tertiary_zen_generation += f' (PSP ID {zen_generation_id})'
 
                 # Resolve one more indirection
-                tertiary_directories = cls.create_directories_if_not_exist(actual_tertiary_offset, fet, zen_generation)
+                tertiary_directories = cls.create_directories_if_not_exist(
+                    actual_tertiary_offset, fet, tertiary_zen_generation)
                 created_directories += tertiary_directories
 
             return created_directories
@@ -219,20 +244,43 @@ class Directory(NestedBuffer):
 
         # 2. Update fields
         entry.type = type_
-        entry.size = size
-        entry.offset = offset
-        # todo: allow updating the address_mode which consists of two bytes right here
+        if entry.type not in File.NO_SIZE_ENTRY_TYPES:
+            entry.size = size
+
+        # Convert the ROM buffer offset back to the value the entry expects, preserving address mode.
+        # This mirrors the inverse of file_offset() in entry.py.
+        addr_mode = self.address_mode
+        if addr_mode == 2 or addr_mode == 3:
+            addr_mode = entry.address_mode
+
+        if addr_mode == 0:
+            # x86 physical: preserve upper bits (e.g. 0xFF000000), replace lower bits
+            addr_mask = self.rom.addr_mask
+            upper_mask = 0xFFFFFFFF ^ addr_mask
+            entry.offset = (entry.offset & upper_mask) | (offset & addr_mask)
+        elif addr_mode == 1:
+            entry.offset = offset
+        elif addr_mode == 2 or addr_mode == 3:
+            entry.offset = offset - self.buffer_offset
+        else:
+            entry.offset = offset
 
         # 3. Update checksum
         self.update_checksum()
 
     def update_zen_generation(self, fet, zen_generation):
-        if zen_generation is not None:
-            if zen_generation not in self.zen_generation:
-                self.zen_generation += '\n' + zen_generation
-                for offset in self.secondary_directory_offsets:
-                    dir = fet.psptool.directories_by_offset[offset]
-                    dir.update_zen_generation(fet, zen_generation)
+        if zen_generation is None:
+            return
+        # A directory first reached without a generation takes the new one
+        if self.zen_generation is None:
+            self.zen_generation = zen_generation
+        elif zen_generation not in self.zen_generation:
+            self.zen_generation += '\n' + zen_generation
+        else:
+            return
+        for offset in self.secondary_directory_offsets:
+            dir = fet.psptool.directories_by_offset[offset]
+            dir.update_zen_generation(fet, zen_generation)
 
 
 class BiosDirectory(Directory):

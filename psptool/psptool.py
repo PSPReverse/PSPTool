@@ -50,11 +50,51 @@ class PSPTool:
         self.blob = Blob(rom_bytes, len(rom_bytes), self)
         self.cert_tree = CertificateTree.from_blob(self.blob, self)
 
+        self._backfill_zen_generation_from_bootloader()
+
     def __repr__(self):
         if self.filename is not None:
             return f'PSPTool(filename={self.filename})'
         else:
             return f'PSPTool(len(rom_bytes)={self.blob.buffer_size}'
+
+    def _backfill_zen_generation_from_bootloader(self):
+        # Single-generation ROMs (notably EPYC server BIOSes) have no 2PSP
+        # combo directory and no tertiary self-tag, so neither of the two
+        # existing detection paths fires. Fall back to the PSP_FW_BOOT_LOADER
+        # version major byte, which is mandatory and stable per PSP firmware
+        # generation. Only fires when the entire ROM is unclassified — in a
+        # multi-generation combo BIOS the boot loader belongs to one of
+        # several $PSP directories and cannot be safely associated with the
+        # sibling $BHD directories.
+        for rom in self.blob.roms:
+            if not all(d.zen_generation is None for d in rom.directories):
+                continue
+
+            bl_major = None
+            for directory in rom.directories:
+                for f in directory.files:
+                    if f.type == 0x01 and isinstance(f, HeaderFile):
+                        # version is reverse-sliced in HeaderFile (header[0x63:0x5f:-1])
+                        # so the printed-form major byte lives at version[1].
+                        bl_major = f.version[1]
+                        break
+                if bl_major is not None:
+                    break
+
+            if bl_major is None:
+                continue
+
+            gen = Directory.BOOTLOADER_VERSION_TO_ZEN.get(bl_major)
+            if gen is None:
+                self.ph.print_warning(
+                    f"PSP_FW_BOOT_LOADER version major 0x{bl_major:02X} not in "
+                    f"BOOTLOADER_VERSION_TO_ZEN; cannot infer zen_generation"
+                )
+                continue
+
+            for directory in rom.directories:
+                directory.zen_generation = gen
 
     def to_file(self, filename):
         with open(filename, 'wb') as f:

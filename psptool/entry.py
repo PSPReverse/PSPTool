@@ -46,6 +46,11 @@ class DirectoryEntry(NestedBuffer):
         # entry address mode must be taken into account, otherwise ignored.
         if addr_mode == 2 or addr_mode == 3:
             addr_mode = self.address_mode
+        # coreboot's amdfwtool writes APOB NV entries on older SoCs as an x86
+        # physical address (entry address mode 0) in a mode 1 directory. No
+        # flash offset reaches 0xff000000.
+        elif addr_mode == 1 and self.address_mode == 0 and self.offset >= 0xFF000000:
+            addr_mode = 0
 
         if addr_mode == 0:
             # x86 physical address, should be in range 0xff000000 - 0xffffffff

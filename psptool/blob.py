@@ -30,6 +30,25 @@ class Blob(NestedBuffer):
     _FIRMWARE_ENTRY_MAGIC = b'\xAA\x55\xAA\x55'
     # All structures per Rom must be in 16MB windows
     _MAX_PAGE_SIZE = 16 * 1024 * 1024
+    # Assumed only when a file entry points past the ROM size taken from the
+    # input size, so a 32 MB ROM inside a bigger file keeps its size
+    _BIG_ROM_SIZE = 64 * 1024 * 1024
+
+    # ROM-relative offsets at which a FET may legitimately appear, in the
+    # try-order used by the parser (the loop breaks on first successful
+    # FET parse, so order is observable). As seen by a PSPTrace Zen 1
+    # boot. The first entry is the canonical position for compact images
+    # and is what the synthetic-fixture builder targets via [0].
+    POSSIBLE_FET_OFFSETS = (
+        0x020000,
+        0xfa0000,
+        0xf20000,
+        0xe20000,
+        0xc20000,
+        0x820000,
+        0x120000,
+    )
+
     class NoFirmwareEntryTableError(Exception):
         pass
 
@@ -39,25 +58,15 @@ class Blob(NestedBuffer):
         self.psptool = psptool
         self.roms: List[Rom] = []
 
-        possible_fet_offsets = [
-            # as seen by a PSPTrace Zen 1 boot
-            0x020000,
-            0xfa0000,
-            0xf20000,
-            0xe20000,
-            0xc20000,
-            0x820000,
-        ]
-
         possible_rom_sizes = [32, 16, 8]
         _rom_size = max(value for value in possible_rom_sizes if value * 1024 * 1024 <= self.buffer_size)
         rom_size = _rom_size * 1024 * 1024
         self.psptool.ph.print_warning(f"Input  file is {self.buffer_size:#x}, will assume ROM size of {_rom_size}M")
 
-        # For each FET, we try to create a 16MB ROM starting at `FET - offset`
+        # For each FET, we try to create a ROM starting at `FET - offset`
         for fet_location in self._find_fets():
             fet_parsed = False
-            for fet_offset in possible_fet_offsets:
+            for fet_offset in self.POSSIBLE_FET_OFFSETS:
                 if fet_location < fet_offset:
                     # would lead to Blob underflow
                     continue
@@ -69,7 +78,7 @@ class Blob(NestedBuffer):
                     rom_offset = fet_location - fet_offset  # e.g. 0x20800 - 0x20000 = 0x0800
                     # W/A for images with single ROMs that have entries crossing 16MB boundary
                     if rom_page == 0:
-                        potential_rom = Rom(self, rom_size, rom_offset, fet_offset, psptool)
+                        potential_rom = self._create_first_page_rom(rom_size, rom_offset, fet_offset)
                     else:
                         potential_rom = Rom(self, min(rom_size, self._MAX_PAGE_SIZE), rom_offset, fet_offset, psptool)
                     self.roms.append(potential_rom)
@@ -88,6 +97,26 @@ class Blob(NestedBuffer):
 
     def __repr__(self):
         return f'Blob({self.roms=})'
+
+    def _create_first_page_rom(self, rom_size, rom_offset, fet_offset):
+        psptool = self.psptool
+        directories = dict(psptool.directories_by_offset)
+        files = dict(psptool.files_by_offset)
+        references = {file: len(file.references) for file in files.values()}
+        try:
+            return Rom(self, rom_size, rom_offset, fet_offset, psptool)
+        except AssertionError as e:
+            if 'overflows ROM bounds' not in str(e) or rom_offset + self._BIG_ROM_SIZE > self.buffer_size:
+                raise
+
+        # Drop what the failed attempt registered before parsing again
+        psptool.directories_by_offset = directories
+        psptool.files_by_offset = files
+        for file, count in references.items():
+            del file.references[count:]
+        psptool.ph.print_warning(f"File offset past {rom_size >> 20}M, will assume ROM size of "
+                                 f"{self._BIG_ROM_SIZE >> 20}M")
+        return Rom(self, self._BIG_ROM_SIZE, rom_offset, fet_offset, psptool)
 
     def _construct_range_dict(self):
         all_files = self.unique_files()
