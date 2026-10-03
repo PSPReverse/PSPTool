@@ -17,11 +17,17 @@
 import struct
 
 from typing import TYPE_CHECKING
+from enum import IntEnum
 if TYPE_CHECKING:
     from directory import Directory
 
 from .utils import NestedBuffer
 
+class AddressMode(IntEnum):
+    PHYSICAL = 0                # x86 Physical address
+    REL_BIOS = 1                # Offset from start of the BIOS (flash offset) most common on modern systems
+    REL_DIR = 2                 # Offset from start of directory header
+    REL_SLOT = 3                # Offset from start of partition
 
 class DirectoryEntry(NestedBuffer):
     ENTRY_SIZE = 4 * 4
@@ -42,17 +48,17 @@ class DirectoryEntry(NestedBuffer):
             return dir_start + self.entry_offset
 
         addr_mode = self.parent_directory.address_mode
-        # If directory address mode is 2 or 3 (relative to dir or slot), the
+        # If directory address mode is relative to dir or slot, the
         # entry address mode must be taken into account, otherwise ignored.
-        if addr_mode == 2 or addr_mode == 3:
+        if addr_mode == AddressMode.REL_DIR or addr_mode == AddressMode.REL_SLOT:
             addr_mode = self.address_mode
         # coreboot's amdfwtool writes APOB NV entries on older SoCs as an x86
-        # physical address (entry address mode 0) in a mode 1 directory. No
+        # physical address in a directory with relative-to-bios mode. No
         # flash offset reaches 0xff000000.
-        elif addr_mode == 1 and self.address_mode == 0 and self.offset >= 0xFF000000:
-            addr_mode = 0
+        elif addr_mode == AddressMode.REL_BIOS and self.address_mode == AddressMode.PHYSICAL and self.offset >= 0xFF000000:
+            addr_mode = AddressMode.PHYSICAL
 
-        if addr_mode == 0:
+        if addr_mode == AddressMode.PHYSICAL:
             # x86 physical address, should be in range 0xff000000 - 0xffffffff
             # But some images use flash offset in x86 physical address mode.
             # If ROM is bigger than 16MB and the entry address is in the
@@ -63,14 +69,11 @@ class DirectoryEntry(NestedBuffer):
                 return self.offset & 0x00FFFFFF
             else:
                 return self.offset & self.parent_directory.rom.addr_mask
-        elif addr_mode == 1:
-            # Flash offset from start of BIOS, most common on modern systems
+        elif addr_mode == AddressMode.REL_BIOS:
             return self.offset
-        elif addr_mode == 2:
-            # Flash offset from start of directory header
+        elif addr_mode == AddressMode.REL_DIR:
             return self.parent_directory.buffer_offset + self.offset
-        elif addr_mode == 3:
-            # Flash offset from start of the slot
+        elif addr_mode == AddressMode.REL_SLOT:
             # TODO: How to calculate the offset from slot? Is this correct?
             return self.parent_directory.buffer_offset + self.offset
 
@@ -130,13 +133,9 @@ class DirectoryEntry(NestedBuffer):
     def rsv0(self, value):
         self.set_bytes(12, struct.pack('<I', value))
 
-    # 00b: x86 Physical address
-    # 01b: Offset from start of the BIOS (flash offset)
-    # 10b: Offset from start of directory header
-    # 11b: Offset from start of partition
     @property
-    def address_mode(self):
-        return (self.rsv0 >> 30) & 3
+    def address_mode(self) -> AddressMode:
+        return AddressMode((self.rsv0 >> 30) & 3)
 
 class BiosDirectoryEntry(DirectoryEntry):
     ENTRY_SIZE = 4 * 6

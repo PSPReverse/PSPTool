@@ -16,7 +16,7 @@
 
 import struct
 
-from .entry import DirectoryEntry, BiosDirectoryEntry
+from .entry import DirectoryEntry, BiosDirectoryEntry, AddressMode
 from .utils import NestedBuffer, fletcher32
 from .file import File, BiosFile, SECONDARY_DIRECTORY_ENTRY_TYPES, TERTIARY_DIRECTORY_ENTRY_TYPES
 
@@ -204,18 +204,14 @@ class Directory(NestedBuffer):
         self.header[8:12] = struct.pack('<I', self.count)
         self.update_checksum()
 
-    # 00b: x86 Physical address
-    # 01b: Offset from start of the BIOS (flash offset)
-    # 10b: Offset from start of directory header
-    # 11b: Offset from start of partition
     @property
-    def address_mode(self):
+    def address_mode(self) -> AddressMode:
         info = struct.unpack('<L', self.additional_info)[0]
         version = (info >> 31) & 1
         if version == 1:
-            return (info >> 24) & 3
+            return AddressMode((info >> 24) & 3)
         else:
-            return (info >> 29) & 3
+            return AddressMode((info >> 29) & 3)
 
     def verify_checksum(self):
         data = self[0x8:]
@@ -247,17 +243,17 @@ class Directory(NestedBuffer):
         # Convert the ROM buffer offset back to the value the entry expects, preserving address mode.
         # This mirrors the inverse of file_offset() in entry.py.
         addr_mode = self.address_mode
-        if addr_mode == 2 or addr_mode == 3:
+        if addr_mode == AddressMode.REL_DIR or addr_mode == AddressMode.REL_SLOT:
             addr_mode = entry.address_mode
 
-        if addr_mode == 0:
+        if addr_mode == AddressMode.PHYSICAL:
             # x86 physical: preserve upper bits (e.g. 0xFF000000), replace lower bits
             addr_mask = self.rom.addr_mask
             upper_mask = 0xFFFFFFFF ^ addr_mask
             entry.offset = (entry.offset & upper_mask) | (offset & addr_mask)
-        elif addr_mode == 1:
+        elif addr_mode == AddressMode.REL_BIOS:
             entry.offset = offset
-        elif addr_mode == 2 or addr_mode == 3:
+        elif addr_mode == AddressMode.REL_DIR or addr_mode == AddressMode.REL_SLOT:
             entry.offset = offset - self.buffer_offset
         else:
             entry.offset = offset
