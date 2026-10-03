@@ -63,7 +63,7 @@ def _build_psp_directory(entry_offset: int, entry_size: int) -> bytes:
         0x00,         # subprogram
         0x0000,       # flags
         entry_size,   # size
-        entry_offset, # offset (raw — directory addr_mode 1 returns this as-is)
+        entry_offset, # offset (raw — directory relative to BIOS address_mode returns this as-is)
         0x00000000,   # rsv0
     )
 
