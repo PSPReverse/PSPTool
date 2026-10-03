@@ -239,9 +239,6 @@ class Directory(NestedBuffer):
                 break
         assert (entry is not None)
 
-        if entry.address_mode == 2 or entry.address_mode == 3:
-            offset -= self.buffer_offset
-
         # 2. Update fields
         entry.type = type_
         if entry.type not in File.NO_SIZE_ENTRY_TYPES:
