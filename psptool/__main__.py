@@ -245,7 +245,7 @@ def main():
                 with open(args.subfile, 'rb') as f:
                     sub_binary = f.read()
                 # Keep the existing file's address, but adapt its size
-                file.move_buffer(file.get_address(), len(sub_binary))
+                file.move_buffer(file.get_address(), len(sub_binary) + file.signature.len)
                 file.set_bytes(0, sub_binary)
 
             privkeys = None
