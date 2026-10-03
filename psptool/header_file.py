@@ -18,9 +18,44 @@ import string
 import struct
 from binascii import hexlify
 from hashlib import md5, sha256, sha384
+from enum import Enum
 
 from .utils import NestedBuffer, zlib_decompress, decrypt, shannon
 from .file import File
+
+class SignatureType(Enum):
+    NONE = (None, 0x0)
+    SHA256 = (0, 0x100)
+    SHA384 = (2, 0x200)
+
+    def __init__(self, type: int, len: int):
+        self.type = type
+        self.len = len
+
+    @property
+    def is_signed(self) -> bool:
+        return self is not SignatureType.NONE
+
+    @classmethod
+    def from_header(cls, signed: NestedBuffer, type: int) -> "SignatureType":
+        signed = int.from_bytes(signed.get_bytes(), 'little')
+        if signed not in {0, 1, 0xffff0000}:
+            raise File.ParseError(f'Did not expect signed to be 0x{signed:x}')
+        if signed == 0:
+            return SignatureType.NONE
+        for st in cls:
+            if st.type == type:
+                return st
+        return File.ParseError(f"Unknown signature type 0x{type:x}")
+
+class Signature(NestedBuffer):
+    def __init__(self, file: 'HeaderFile', type: SignatureType):
+        self.type = type
+        super().__init__(file, type.len, file.rom_size - type.len)
+
+    @property
+    def len(self) -> int:
+        return self.type.len
 
 
 class HeaderFile(File):
@@ -44,8 +79,9 @@ class HeaderFile(File):
         self.encrypted = struct.unpack('<I', self.header[0x18:0x1c])[0] == 1
         self._sha256_checksum = NestedBuffer(self, 0x20, 0xd0)
         self._sha384_checksum = NestedBuffer(self, 0x30, 0xd0)
-        self._signed = NestedBuffer(self, 4, 0x30)
-        self.signature_type = struct.unpack('<I', self.header[0x34:0x38])[0]
+        # signed, signature_type = struct.unpack('<II', self.header[0x30:0x38])
+        signed = NestedBuffer(self, 4, 0x30)
+        signature_type = struct.unpack('<I', self.header[0x34:0x38])[0]
         self.signature_fingerprint = hexlify(self.header[0x38:0x48])
         self.compressed = struct.unpack('<I', self.header[0x48:0x4c])[0] == 1
         self.unknown_field_2 = struct.unpack('<I', self.header[0x4c:0x50])[0]
@@ -78,14 +114,7 @@ class HeaderFile(File):
         # TODO: Take care of headers with only 0xfff...
         # TODO if zlib_size == 0 try size_signed
 
-        if self.is_signed:
-            if self.signature_type == 0x0:
-                self.signature_len = 0x100
-            elif self.signature_type == 0x2:
-                self.signature_len = 0x200
-            self.signature = NestedBuffer(self, self.signature_len, self.rom_size - self.signature_len)
-        else:
-            self.signature_len = 0
+        self.signature = Signature(self, SignatureType.from_header(signed, signature_type))
 
         self._parse_hdr()
 
@@ -101,7 +130,7 @@ class HeaderFile(File):
 
         assert 0 < self.rom_size <= self.buffer_size
         self.buffer_size = self.rom_size
-        self.body = NestedBuffer(self, len(self) - len(self.header) - self.signature_len, len(self.header))
+        self.body = NestedBuffer(self, len(self) - len(self.header) - self.signature.len, len(self.header))
         self.is_legacy = False
 
     def get_checksummed_bytes(self):
@@ -127,10 +156,7 @@ class HeaderFile(File):
 
     @property
     def is_signed(self) -> bool:
-        signed = int.from_bytes(self._signed.get_bytes(), 'little')
-        if signed not in {0, 1, 0xffff0000}:
-            raise self.ParseError(f'Did not expect signed to be 0x{signed:x}')
-        return signed != 0
+        return self.signature.type.is_signed
 
     def get_readable_version(self):
         return '.'.join([hex(b)[2:].upper() for b in self.version])
