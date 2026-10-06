@@ -174,6 +174,7 @@ class Directory(NestedBuffer):
         # create/link files
         for entry in self.entries:
             file = self.FILE_CLASS.create_file_if_not_exists(self, entry)
+            entry.file = file
             if file is not None:
                 self.files.append(file)
 
@@ -226,37 +227,25 @@ class Directory(NestedBuffer):
         self.checksum.set_bytes(0, fletcher32(data))
 
     def update_entry_fields(self, file: File, type_, size, offset):
-        # 1. Find respective Entry for a given File
+        # 1. Find respective entry for a given file
         entry = None
-        for index, my_entry in enumerate(self.entries):
-            # We assume that each directory has at most one entry of a given type
-            if my_entry.type == file.type:
-                entry = my_entry
+        for e in self.entries:
+            if e.file is file:
+                entry = e
                 break
-        assert (entry is not None)
+        assert entry is not None, f'No entry for {file} in {self}'
 
         # 2. Update fields
         entry.type = type_
         if entry.type not in File.NO_SIZE_ENTRY_TYPES:
             entry.size = size
 
-        # Convert the ROM buffer offset back to the value the entry expects, preserving address mode.
-        # This mirrors the inverse of file_offset() in entry.py.
-        addr_mode = self.address_mode
-        if addr_mode == AddressMode.REL_DIR or addr_mode == AddressMode.REL_SLOT:
-            addr_mode = entry.address_mode
-
-        if addr_mode == AddressMode.PHYSICAL:
-            # x86 physical: preserve upper bits (e.g. 0xFF000000), replace lower bits
-            addr_mask = self.rom.addr_mask
-            upper_mask = 0xFFFFFFFF ^ addr_mask
-            entry.offset = (entry.offset & upper_mask) | (offset & addr_mask)
-        elif addr_mode == AddressMode.REL_BIOS:
-            entry.offset = offset
-        elif addr_mode == AddressMode.REL_DIR or addr_mode == AddressMode.REL_SLOT:
-            entry.offset = offset - self.buffer_offset
-        else:
-            entry.offset = offset
+            # file_offset() is affine in entry.offset (within the
+            # address mask), so shifting entry.offset by the file's
+            # displacement keeps the address mode and upper bits
+            # intact, and leaves in-place replacements untouched.
+            entry.offset += offset - entry.file_offset()
+            assert entry.file_offset() == offset, f'Offset {offset:#x} is not representable by {entry}'
 
         # 3. Update checksum
         self.update_checksum()

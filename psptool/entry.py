@@ -36,6 +36,7 @@ class DirectoryEntry(NestedBuffer):
         super().__init__(parent_directory.body, self.ENTRY_SIZE, entry_offset)
         self.parent_directory = parent_directory
         self.entry_offset = entry_offset
+        self.file = None
 
     def __repr__(self):
         return f'{self.__class__.__name__}({self.type=:#x}, {self.flags=:#x}, {self.size=:#x}, ' \
