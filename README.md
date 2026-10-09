@@ -856,6 +856,6 @@ b'\x01\x00\x00\x00\x1b\xb9\x87\xc3YIF\x06\xb1t\x94V\x01\xc9\xea[\x1b\xb9\x87\xc3
 [...]
 > my_stuff = [...]
 > psp.blob.roms[0].directories[0].files[1].move_buffer(0x60000, 0x1000)
-> psp.blob.roms[0].set_bytes(0x60000, 0x1000, my_stuff)
+> psp.blob.roms[0].set_bytes(0x60000, my_stuff)
 > psp.to_file('my_modified_bios.bin')
 ```

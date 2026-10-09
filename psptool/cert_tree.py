@@ -114,7 +114,7 @@ class SignedEntity:
         assert len(signature) == self.signature.buffer_size, f'Could not resign {self} with {privkey}: ' \
                                                              f'The new signature has the wrong length ' \
                                                              f'{len(signature)} != {self.signature.buffer_size}'
-        self.signature.set_bytes(0, len(signature), signature)
+        self.signature.set_bytes(0, signature)
 
     def resign_and_replace(self, privkeys: PrivateKeyDict = None, recursive: bool = False):
         # this resigns self (multiple times!)
@@ -215,7 +215,7 @@ class PublicKeyEntity:
     def replace_crypto_material(self, crypto_material: bytes):
         assert len(crypto_material) == self._crypto_material.buffer_size, f'Crypto material has wrong size: {len(crypto_material)} != {self._crypto_material.buffer_size}'
         self._public_key = None
-        self._crypto_material.set_bytes(0, len(crypto_material), crypto_material)
+        self._crypto_material.set_bytes(0, crypto_material)
 
     def replace_only(self, pubkey: PublicKey):
         print(f'Replacing {self}')
