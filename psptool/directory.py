@@ -31,11 +31,25 @@ class Directory(NestedBuffer):
     ENTRY_SIZE = DirectoryEntry.ENTRY_SIZE
     FILE_CLASS = File
 
+    # Platform IDs from the tertiary directory headers. For the newer ones, the boot loader
+    # version and image they were seen in.
     ZEN_GENERATION_IDS = {'Zen 1'  : [b'\x00\x09\xBC', b'\x00\x0A\xBC'],
-                          'Zen 2'  : [b'\x05\x0B\xBC', b'\x01\x0A\xBC'],
-                          'Zen 3'  : [b'\x01\x0C\xBC', b'\x00\x0C\xBC'],
-                          'Zen 4'  : [b'\x04\x0D\xBC', b'\x0B\x0D\xBC'],
-                          'Zen 4/5': [b'\x03\x0D\xBC']
+                          'Zen 2'  : [b'\x05\x0B\xBC', b'\x01\x0A\xBC',
+                                      b'\x00\x0B\xBC',   # 0.E.0.3B, Threadripper Pro (Supermicro M12SWA-TF)
+                                      b'\x09\x0D\xBC'],  # 0.35.0.1D, Mendocino laptop (Lenovo l1cn*ww)
+                          'Zen 3'  : [b'\x01\x0C\xBC', b'\x00\x0C\xBC',
+                                      b'\x0D\x0B\xBC'],  # 0.26.0.29, Threadripper Pro (Supermicro M12SWA-TF)
+                          'Zen 3+' : [b'\x02\x0D\xBC'],  # 0.28.0.6B, Rembrandt laptop (ASUS ROG)
+                          'Zen 4'  : [b'\x04\x0D\xBC', b'\x0B\x0D\xBC',
+                                      b'\x01\x0D\xBC'],  # 0.2A.0.22, Threadripper 7000 (Supermicro H13SRA)
+                          'Zen 4/5': [b'\x03\x0D\xBC'],
+                          'Zen 5'  : [b'\x0B\x0E\xBC',   # 0.3E.0.D0 and 0.3E.C.74, AM5 board and Ryzen AI 300 laptop
+                                      b'\x10\x0E\xBC',   # 0.3E.0.D0, AM5 board (MSI)
+                                      b'\x02\x0E\xBC',   # 0.3E.C.74, Ryzen AI 300 laptop (Framework Laptop 13)
+                                      b'\x09\x0E\xBC',   # 0.40.2.65, Ryzen AI Max (Framework Desktop)
+                                      b'\x00\x0E\xBC', b'\x0C\x0E\xBC',  # 0.47.0.1F, Threadripper 9000
+                                      b'\x0D\x0E\xBC', b'\x11\x0E\xBC'],  # (Supermicro H13SRA)
+                          'Zen 6'  : [b'\x00\x00\xBF'],  # 0.43.1.76, EPYC Venice (Supermicro H15SPT-G)
                          }
 
     # Empirical mapping from PSP_FW_BOOT_LOADER (entry type 0x01) version
@@ -49,6 +63,8 @@ class Directory(NestedBuffer):
         0x07: 'Zen 1',                # Naples server (NaplesPI-SP3): H11DSI, MZ31-AR, S8026
         0x09: 'Zen 1', 0x0A: 'Zen 1', # Naples / Raven Ridge consumer
         0x0B: 'Zen 2', 0x0C: 'Zen 2', # Rome
+        0x11: 'Zen 3',                # Cezanne (0.11.1.81, coreboot image)
+        0x1A: 'Zen 2',                # Van Gogh (0.1A.0.30, Steam Deck F7A0115)
         0x13: 'Zen 3',                # Milan
         0x29: 'Zen 4',                # Genoa, Siena (Zen 4c shares the major)
         0x3D: 'Zen 5',                # Turin (Bergamo also lands here per the issue)
@@ -70,19 +86,26 @@ class Directory(NestedBuffer):
     def bios_directory_class(cls):
         return BiosDirectory
 
+    @staticmethod
+    def blob_address(fet, offset) -> int:
+        """Key for psptool.directories_by_offset: ROMs in one file can hold different
+        directories at the same ROM offset (e.g. the two ROMs of Supermicro M12SWA-TF)"""
+        return fet.rom.get_address() + (offset & fet.rom.addr_mask)
+
     @classmethod
     def create_directories_if_not_exist(cls, offset, fet, zen_generation=None) -> List['Directory']:
         # Recursively return or create and return found directories
 
-        if offset in fet.psptool.directories_by_offset:
-            fet.psptool.directories_by_offset[offset].update_zen_generation(fet, zen_generation)
-            return [fet.psptool.directories_by_offset[offset]]
+        key = cls.blob_address(fet, offset)
+        if key in fet.psptool.directories_by_offset:
+            fet.psptool.directories_by_offset[key].update_zen_generation(fet, zen_generation)
+            return [fet.psptool.directories_by_offset[key]]
         else:
             # 1. Create the immediate directory in front of us
             created_directories = []
             try:
                 directory = cls.from_offset(fet, offset, zen_generation)
-                fet.psptool.directories_by_offset[offset] = directory
+                fet.psptool.directories_by_offset[key] = directory
                 created_directories.append(directory)
             except Directory.ParseError as e:
                 # Handle empty entries gracefully (like master branch)
@@ -110,13 +133,23 @@ class Directory(NestedBuffer):
                     continue
 
                 actual_tertiary_offset = int.from_bytes(directory_body[16:20], 'little')
-                zen_generation_id = directory_body[21:24]
-                tertiary_zen_generation = cls.get_possible_zen_generation(zen_generation_id)
-                if tertiary_zen_generation == 'unknown':
-                    fet.psptool.ph.print_warning(f"Unknown {zen_generation_id=}")
+                psp_id = directory_body[20:24]
+                # Slot headers without the leading checksum hold the L2 location at 0xc and
+                # leave the PSP ID erased (Van Gogh, Steam Deck F7A0115)
+                short_header_offset = int.from_bytes(directory_body[12:16], 'little')
+                if not cls._is_directory_at(fet, actual_tertiary_offset) and \
+                        cls._is_directory_at(fet, short_header_offset):
+                    actual_tertiary_offset = short_header_offset
+                    psp_id = directory_body[16:20]
 
-                zen_generation_id = hex(int.from_bytes(directory_body[20:24], 'little'))
-                tertiary_zen_generation += f' (PSP ID {zen_generation_id})'
+                if psp_id == b'\xff' * 4:
+                    tertiary_zen_generation = zen_generation
+                else:
+                    zen_generation_id = psp_id[1:4]
+                    tertiary_zen_generation = cls.get_possible_zen_generation(zen_generation_id)
+                    if tertiary_zen_generation == 'unknown':
+                        fet.psptool.ph.print_warning(f"Unknown {zen_generation_id=}")
+                    tertiary_zen_generation += f' (PSP ID {hex(int.from_bytes(psp_id, "little"))})'
 
                 # Resolve one more indirection
                 tertiary_directories = cls.create_directories_if_not_exist(
@@ -126,8 +159,17 @@ class Directory(NestedBuffer):
             return created_directories
 
     @classmethod
+    def _is_directory_at(cls, fet, offset) -> bool:
+        offset &= fet.rom.addr_mask
+        if offset + 4 > fet.rom.buffer_size:
+            return False
+        return fet.rom.get_bytes(offset, 4) in cls.DIRECTORY_MAGICS + BiosDirectory.DIRECTORY_MAGICS
+
+    @classmethod
     def from_offset(cls, fet, rom_offset, zen_generation=None):
         rom_offset &= fet.rom.addr_mask
+        if rom_offset + 4 > fet.rom.buffer_size:
+            raise Directory.ParseError(f"Directory offset 0x{rom_offset:x} is outside the ROM")
         magic = fet.rom.get_bytes(rom_offset, 4)
 
         if magic == b'\xff\xff\xff\xff' or magic == b'\x00\x00\x00\x00':
@@ -261,7 +303,7 @@ class Directory(NestedBuffer):
         else:
             return
         for offset in self.secondary_directory_offsets:
-            dir = fet.psptool.directories_by_offset[offset]
+            dir = fet.psptool.directories_by_offset[self.blob_address(fet, offset)]
             dir.update_zen_generation(fet, zen_generation)
 
 

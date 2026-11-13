@@ -24,6 +24,7 @@ from .directory import Directory
 from .header_file import HeaderFile
 from .microcode_file import MicrocodeFile
 from .pubkey_file import PubkeyFile
+from .key_store_file import KeyStoreFile
 from .blob import Blob
 from .utils import PrintHelper
 from .cert_tree import CertificateTree
@@ -151,6 +152,8 @@ class PSPTool:
         file: File
         for index, file in enumerate(files):
             info = []
+            if type(file) is File and file.is_erased:
+                info.append('erased')
             if file.compressed:
                 info.append('compressed')
             if file.is_signed:
@@ -178,13 +181,20 @@ class PSPTool:
                         info.append(f'sha384_ok')
                     else:
                         info.append(f'sha384_inconsistent')
+                if file.module_index is not None:
+                    info.append(self._readable_module_index(file))
                 if file.inline_keys:
                     inline_keys = ', '.join(map(lambda k: k.get_readable_magic(), file.inline_keys))
                     info.append(f'inline_keys({inline_keys})')
             if type(file) == PubkeyFile:
                 info.append(file.get_readable_key_usage())
+                if file.lms_keys:
+                    info.append(f'lms_root_keys({len(file.lms_keys)})')
                 if file.get_readable_security_features():
                     info.append(file.get_readable_security_features())
+
+            if isinstance(file, KeyStoreFile) and any(key.is_lms for key in file.key_store.keys):
+                info.append(f'lms_keys({sum(key.is_lms for key in file.key_store.keys)})')
 
             if file.get_readable_type() == "BIOS":
                 info.append(f'destination({file.get_readable_destination_address()})')
@@ -269,6 +279,8 @@ class PSPTool:
         out = []
         for index, file in enumerate(files):
             info = []
+            if type(file) is File and file.is_erased:
+                info.append('erased')
             if file.compressed:
                 info.append('compressed')
             if file.is_signed:
@@ -282,6 +294,12 @@ class PSPTool:
                 info.append('legacy header')
             if file.encrypted:
                 info.append('encrypted')
+            if isinstance(file, HeaderFile) and file.module_index is not None:
+                info.append(self._readable_module_index(file))
+            if type(file) == PubkeyFile and file.lms_keys:
+                info.append(f'lms_root_keys({len(file.lms_keys)})')
+            if isinstance(file, KeyStoreFile) and any(key.is_lms for key in file.key_store.keys):
+                info.append(f'lms_keys({sum(key.is_lms for key in file.key_store.keys)})')
 
             all_values = {
                 'index': index,
@@ -308,6 +326,13 @@ class PSPTool:
             out.append(all_values)
 
         return out
+
+    @staticmethod
+    def _readable_module_index(file) -> str:
+        index = file.module_index
+        if not index.has_digests:
+            return f'modules({len(index)})'
+        return f'module_index_{"ok" if index.verify(file) else "inconsistent"}({len(index)})'
 
     def print_metrics(self):
         print(self.filename)

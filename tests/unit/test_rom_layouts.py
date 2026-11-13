@@ -18,6 +18,14 @@
   (T14 Gen 7 AMD).
 - An x86 physical address with entry address mode 0 in a directory with
   address mode 1, as coreboot writes APOB NV entries (StarBook Mk VI AMD).
+- An entry left erased (all 0xff), as the KVM_IMAGE slot on Threadripper boards
+  (Supermicro M12SWA-TF, H13SRA).
+- Two ROMs in one file with different directories at the same ROM offsets
+  (Supermicro M12SWA-TF), and ANOTHER_FET entries whose tables look like FETs.
+- A second, minimal EFS at 0x1000 next to the one at 0x20000 (AM5).
+- SPI settings after the FET's pointers (AM5).
+- Slot headers without the leading checksum, with the L2 location at 0xc (Steam Deck).
+- An image cut short of what its BIOS entries address (Steam Deck region from a capsule).
 """
 
 import contextlib
@@ -65,6 +73,22 @@ def rom(size: int, psp_entries, extra=()) -> bytes:
     for offset, data in extra:
         blob[offset:offset + len(data)] = data
     return bytes(blob)
+
+
+def fet(pointers, trailer=b'') -> bytes:
+    """A FET with the given pointers (from offset 4), padded to 0x40, then trailer"""
+    table = Blob._FIRMWARE_ENTRY_MAGIC + b''.join(struct.pack('<I', p) for p in pointers)
+    return table.ljust(0x40, b'\0') + trailer + b'\xff' * 16
+
+
+def boot_loader(major: int) -> bytes:
+    header = bytearray(header_file())
+    header[0x62] = major
+    return bytes(header)
+
+
+def place(blob: bytearray, offset: int, data: bytes):
+    blob[offset:offset + len(data)] = data
 
 
 def parse(data: bytes):
@@ -156,6 +180,87 @@ class TestRomLayouts(unittest.TestCase):
         # A header size past the entry size but inside the ROM still counts
         (good,) = pt.blob.unique_files()
         self.assertEqual(good.buffer_size, 2 * HEADER_FILE_SIZE)
+
+    def test_erased_entry_is_kept_as_plain_file(self):
+        offset = FET_OFFSET + 0x4000
+        size = 0x2000
+        data = rom(8 * MB, [(0x29, size, offset)], [(offset, b'\xff' * size)])
+        pt, warnings = parse(data)
+        self.assertNotIn('ParseError', warnings)
+        (erased,) = pt.blob.unique_files()
+        self.assertEqual(type(erased).__name__, 'File')
+        self.assertTrue(erased.is_erased)
+        self.assertEqual(erased.buffer_size, size)
+
+    def test_two_roms_with_directories_at_same_rom_offsets(self):
+        blob = bytearray(32 * MB)
+        for rom_start, major in ((0, 0x29), (16 * MB, 0x3D)):
+            place(blob, rom_start + FET_OFFSET - 4, b'\xff' * 4 + fet([0, 0, 0, PSP_DIR_OFFSET]))
+            place(blob, rom_start + PSP_DIR_OFFSET, directory(b'$PSP', [(0x01, HEADER_FILE_SIZE, 0x30000)]))
+            place(blob, rom_start + 0x30000, boot_loader(major))
+        pt, _ = parse(bytes(blob))
+        self.assertEqual([rom.get_address() for rom in pt.blob.roms], [0, 16 * MB])
+        self.assertEqual(files(pt), {(0x01, 0x30000), (0x01, 16 * MB + 0x30000)})
+        versions = {f.get_address(): f.get_readable_version() for f in pt.blob.unique_files()}
+        self.assertEqual(versions, {0x30000: '0.29.0.0', 16 * MB + 0x30000: '0.3D.0.0'})
+
+    def test_fet_inside_another_fet_entry_is_not_a_rom(self):
+        another_fet = FET_OFFSET + 0x20000
+        data = rom(8 * MB, [(0x46, 0x1000, another_fet)], [
+            # A table addressing a separate image, starting like a FET
+            (another_fet, b'\xff' * 4 + fet([0xff000030])),
+        ])
+        pt, warnings = parse(data)
+        self.assertEqual(len(pt.blob.roms), 1)
+        self.assertNotIn('unknown ROM alignment', warnings)
+        self.assertEqual(files(pt), {(0x46, another_fet)})
+
+    def test_early_fet_at_0x1000_is_parsed_after_main_rom(self):
+        blob = bytearray(16 * MB)
+        place(blob, FET_OFFSET - 4, b'\xff' * 4 + fet([0, 0, 0, PSP_DIR_OFFSET]))
+        place(blob, PSP_DIR_OFFSET, directory(b'$PSP', [(0x01, HEADER_FILE_SIZE, 0x30000)]))
+        place(blob, 0x30000, boot_loader(0x29))
+        place(blob, 0x1000 - 4, b'\xff' * 4 + fet([0, 0, 0, 0x2000]))
+        place(blob, 0x2000, directory(b'$PSP', [(0x01, HEADER_FILE_SIZE, 0x3000)]))
+        place(blob, 0x3000, boot_loader(0x2B))
+        pt, warnings = parse(bytes(blob))
+        self.assertNotIn('unknown ROM alignment', warnings)
+        self.assertEqual([rom.fet.get_address() for rom in pt.blob.roms], [FET_OFFSET, 0x1000])
+        self.assertEqual(files(pt), {(0x01, 0x30000), (0x01, 0x3000)})
+
+    def test_spi_settings_after_fet_pointers_are_ignored(self):
+        data = bytearray(rom(32 * MB, [(0x01, HEADER_FILE_SIZE, FET_OFFSET + 0x4000)],
+                             [(FET_OFFSET + 0x4000, header_file())]))
+        # SPI read mode, fast speed and friends at 0x40, as on AM5
+        place(data, FET_OFFSET, fet([0, 0, 0, PSP_DIR_OFFSET], b'\xff' * 8 + bytes.fromhex('ffffff050055ffff')))
+        pt, warnings = parse(bytes(data))
+        self.assertNotIn('not found or invalid', warnings)
+        self.assertEqual(files(pt), {(0x01, FET_OFFSET + 0x4000)})
+
+    def test_slot_header_without_checksum(self):
+        ish = FET_OFFSET + 0x2000
+        l2_offset = FET_OFFSET + 0x4000
+        file_offset = FET_OFFSET + 0x5000
+        # boot priority, update retries, glitch retries, L2 location, erased PSP ID
+        slot = struct.pack('<IIII', 2, 3, 0xff, l2_offset) + b'\xff' * 16
+        data = rom(8 * MB, [(0x48, 0, ish)], [
+            (ish, slot),
+            (l2_offset, directory(b'$PL2', [(0x01, HEADER_FILE_SIZE, file_offset)])),
+            (file_offset, header_file()),
+        ])
+        pt, warnings = parse(data)
+        self.assertNotIn('Unknown zen_generation_id', warnings)
+        self.assertEqual([d.magic for d in pt.blob.roms[0].directories], [b'$PSP', b'$PL2'])
+        self.assertIn((0x01, file_offset), files(pt))
+
+    def test_entries_past_end_of_cut_short_image_are_skipped(self):
+        size = 16 * MB
+        file_offset = FET_OFFSET + 0x5000
+        data = rom(size, [(0x01, HEADER_FILE_SIZE, file_offset), (0x62, 0x1000, size + 0x10000)],
+                   [(file_offset, header_file())])
+        pt, warnings = parse(data)
+        self.assertIn('skipping entries outside', warnings)
+        self.assertEqual(files(pt), {(0x01, file_offset)})
 
     def test_slot_header_pointing_at_non_directory_is_skipped(self):
         ish_a = FET_OFFSET + 0x2000

@@ -15,6 +15,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import re
+import struct
 import binascii
 
 from typing import List
@@ -23,7 +24,7 @@ from .fet import EmptyFet
 from .rom import Rom
 from .utils import NestedBuffer, RangeDict
 from .file import File
-from .pubkey_file import PubkeyFile, InlinePubkeyFile
+from .pubkey_file import PubkeyFile, InlinePubkeyFile, UnknownPubkeyFileVersion
 
 
 class Blob(NestedBuffer):
@@ -47,7 +48,14 @@ class Blob(NestedBuffer):
         0xc20000,
         0x820000,
         0x120000,
+        # A second, minimal EFS with its own boot loader on AM5. Only taken at the start
+        # of a 16MB page, see EARLY_FET_OFFSET.
+        0x001000,
     )
+    EARLY_FET_OFFSET = 0x001000
+
+    # Directory entry type of a FET for a separate image
+    ANOTHER_FET_TYPE = 0x46
 
     class NoFirmwareEntryTableError(Exception):
         pass
@@ -63,12 +71,24 @@ class Blob(NestedBuffer):
         rom_size = _rom_size * 1024 * 1024
         self.psptool.ph.print_warning(f"Input  file is {self.buffer_size:#x}, will assume ROM size of {_rom_size}M")
 
+        # Early FETs go last, so that ROM 0 (the default of -X and -R) stays the main ROM
+        fet_locations = sorted(self._find_fets(),
+                               key=lambda location: location % self._MAX_PAGE_SIZE == self.EARLY_FET_OFFSET)
+
         # For each FET, we try to create a ROM starting at `FET - offset`
-        for fet_location in self._find_fets():
+        for fet_location in fet_locations:
+            another_fet = self._another_fet_at(fet_location)
+            if another_fet is not None:
+                # Its table addresses a separate image, not a ROM in this file
+                self.psptool.ph.print_info(f"Not parsing FET at {hex(fet_location)} inside {another_fet}")
+                continue
             fet_parsed = False
             for fet_offset in self.POSSIBLE_FET_OFFSETS:
                 if fet_location < fet_offset:
                     # would lead to Blob underflow
+                    continue
+                if fet_offset == self.EARLY_FET_OFFSET and (fet_location - fet_offset) % self._MAX_PAGE_SIZE:
+                    # Too short an offset to tell a ROM start from data that looks like a FET
                     continue
                 rom_page = int(fet_location / self._MAX_PAGE_SIZE)
                 if fet_location - fet_offset + rom_size - rom_page * self._MAX_PAGE_SIZE > self.buffer_size:
@@ -98,6 +118,17 @@ class Blob(NestedBuffer):
     def __repr__(self):
         return f'Blob({self.roms=})'
 
+    def _another_fet_at(self, address: int):
+        """The ANOTHER_FET entry of a parsed ROM holding this address, if any. Other entries
+        are not checked, as their sizes can overstate what they hold."""
+        for rom in self.roms:
+            for directory in rom.directories:
+                for file in directory.files:
+                    if file.type == self.ANOTHER_FET_TYPE and \
+                            file.get_address() <= address < file.get_address() + file.buffer_size:
+                        return file
+        return None
+
     def _create_first_page_rom(self, rom_size, rom_offset, fet_offset):
         psptool = self.psptool
         directories = dict(psptool.directories_by_offset)
@@ -106,7 +137,7 @@ class Blob(NestedBuffer):
         try:
             return Rom(self, rom_size, rom_offset, fet_offset, psptool)
         except AssertionError as e:
-            if 'overflows ROM bounds' not in str(e) or rom_offset + self._BIG_ROM_SIZE > self.buffer_size:
+            if 'overflows ROM bounds' not in str(e):
                 raise
 
         # Drop what the failed attempt registered before parsing again
@@ -114,6 +145,12 @@ class Blob(NestedBuffer):
         psptool.files_by_offset = files
         for file, count in references.items():
             del file.references[count:]
+        if rom_offset + self._BIG_ROM_SIZE > self.buffer_size:
+            # The input is shorter than what its entries address, e.g. a region carved out of
+            # a capsule: keep what is there
+            psptool.ph.print_warning(f"File offset past the end of the input, skipping entries outside "
+                                     f"its {rom_size >> 20}M")
+            return Rom(self, rom_size, rom_offset, fet_offset, psptool, cut_short=True)
         psptool.ph.print_warning(f"File offset past {rom_size >> 20}M, will assume ROM size of "
                                  f"{self._BIG_ROM_SIZE >> 20}M")
         return Rom(self, self._BIG_ROM_SIZE, rom_offset, fet_offset, psptool)
@@ -158,55 +195,50 @@ class Blob(NestedBuffer):
             fet_offset = m.start() + 4
             yield fet_offset
 
-    def _find_inline_pubkeys(self, fp):
+    def find_inline_pubkey_entries(self, ids) -> List[InlinePubkeyFile]:
+        """ Find public keys with the given key ids (hex strings) embedded in files with a
+        header, such as the keys in Zen 2 boot loaders that sign SMU, SEC_GASKET and
+        DEBUG_UNLOCK. A key is recognized by its version before the key id and its key
+        sizes, at any alignment. Found keys are added to the inline_keys of their file. """
+        if not ids:
+            return []
+        pattern = re.compile(b'|'.join(re.escape(binascii.a2b_hex(key_id)) for key_id in sorted(ids)))
 
-        """ Try to find a pubkey in any of the found files.
-        The pubkey is identified by its fingerprint. If found, the pubkey is
-        added to the list of pubkeys of the blob """
         found_pubkeys = []
-
-        for file in self.unique_files():
-            if type(file) == PubkeyFile:
-                continue  # Pubkeys don't have inline keys but will only produce false positives
-            m = re.finditer(re.escape(binascii.a2b_hex(fp)), file.get_bytes())
-            for index in m:
-                start_offset = index.start() - 4
-                if int.from_bytes(self[start_offset:start_offset + 4], 'little') in PubkeyFile.KNOWN_VERSIONS:
-                    # Maybe a pubkey. Determine its size:
-                    pub_exp_size = int.from_bytes(self[start_offset + 0x38: start_offset + 0x3c],
-                                                  'little')
-                    if pub_exp_size == 2048:
-                        size = 0x240
-                    elif pub_exp_size == 4096:
-                        size = 0x440
-                    else:
-                        continue
-
-                    key_id = self[start_offset + 0x04: start_offset + 0x14]
-                    cert_id = self[start_offset + 0x14: start_offset + 0x24]
-
-                    if key_id != cert_id and cert_id != b'\0' * 0x10:
-                        if pub_exp_size == 2048:
-                            size += 0x100
-                        else:
-                            size += 0x200
-
-                    try:
-                        file = InlinePubkeyFile(file, start_offset, size, self, self.psptool)
-                        assert isinstance(file, PubkeyFile)
-                        file.inline_keys.add(file)
-                        found_pubkeys.append(file)
-                    except File.ParseError as e:
-                        self.psptool.ph.print_warning(f"_find_pubkey: File parse error at 0x{start_offset:x}")
-                        self.psptool.ph.print_warning(f'{e}')
+        for file in sorted(self.unique_files()):
+            if isinstance(file, PubkeyFile) or not hasattr(file, 'inline_keys'):
+                continue
+            data = file.get_bytes()
+            for match in pattern.finditer(data):
+                inline_key = self._inline_pubkey_at(file, data, match.start() - 4)
+                if inline_key is not None:
+                    file.inline_keys.add(inline_key)
+                    found_pubkeys.append(inline_key)
 
         return found_pubkeys
 
-    def find_inline_pubkey_entries(self, ids):
-        found_pkes = []
-        for key_id in ids:
-            found_pkes += self._find_inline_pubkeys(key_id)
-        return found_pkes
+    def _inline_pubkey_at(self, file: File, data: bytes, start: int):
+        if start < 0 or start + PubkeyFile.HEADER_LEN > len(data):
+            return None
+        version, = struct.unpack_from('<I', data, start)
+        pubexp_bits, modulus_bits = struct.unpack_from('<II', data, start + 0x38)
+        if version not in PubkeyFile.KNOWN_VERSIONS or pubexp_bits != modulus_bits or pubexp_bits not in (2048, 4096):
+            return None
+
+        size = PubkeyFile.HEADER_LEN + 2 * (pubexp_bits >> 3)
+        key_id = data[start + 0x04:start + 0x14]
+        certifying_id = data[start + 0x14:start + 0x24]
+        if certifying_id not in (key_id, bytes(0x10)):
+            # Signed key; assume the certifying key has the same size
+            size += pubexp_bits >> 3
+        if start + size > len(data):
+            return None
+
+        try:
+            return InlinePubkeyFile(file, start, size, self, self.psptool)
+        except (File.ParseError, UnknownPubkeyFileVersion, AssertionError) as e:
+            self.psptool.ph.print_warning(f"Could not parse inline key at 0x{file.get_address() + start:x}: {e}")
+            return None
 
     def get_files_by_type(self, type_) -> List[File]:
         all_files = self.unique_files()

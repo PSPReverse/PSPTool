@@ -14,7 +14,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from .utils import NestedBuffer
+from .utils import NestedBuffer, chunker
 from .directory import Directory
 
 from typing import List
@@ -24,6 +24,10 @@ class EmptyFet(Exception):
 
 
 class Fet(NestedBuffer):
+    # Directory and firmware pointers end here; SPI flash settings follow (see
+    # struct embedded_firmware in coreboot's amdfwtool)
+    POINTERS_END = 0x40
+
     def __init__(self, parent_rom, fet_offset: int, psptool):
 
         self.rom = parent_rom
@@ -57,7 +61,7 @@ class Fet(NestedBuffer):
         return size
 
     def _parse_entry_table(self):
-        entries = self.get_chunks(4, 4)
+        entries = chunker(self[4:min(len(self), self.POINTERS_END)], 4)
         for _index, entry in enumerate(entries):
             rom_addr = int.from_bytes(entry, 'little')
             # TODO: Why is 0xFFFFFFFe a possible value here?

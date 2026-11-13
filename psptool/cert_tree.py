@@ -52,7 +52,22 @@ class SignedEntity:
     @staticmethod
     def _from_pubkey_file(pkf, psptool):
         if pkf.is_signed:
-            return SignedEntity(pkf, pkf.certifying_id, pkf.signature, psptool)
+            certifying_id = pkf.certifying_id
+            if certifying_id.get_bytes() == bytes(len(certifying_id)):
+                # An unnamed certifying key is the AMD root key of the same directory
+                # (SEC_DBG_PUBLIC_KEY on Mendocino)
+                root_key = SignedEntity._root_key_of(pkf)
+                if root_key is not None:
+                    certifying_id = root_key.key_id
+            return SignedEntity(pkf, certifying_id, pkf.signature, psptool)
+        return None
+
+    @staticmethod
+    def _root_key_of(file):
+        for directory in file.references:
+            for other in directory.files:
+                if other is not file and other.type == 0x00 and type(other) is PubkeyFile:
+                    return other
         return None
 
     @staticmethod
@@ -95,7 +110,16 @@ class SignedEntity:
         return True
 
     def verify_with_pubkey(self, pubkey: PublicKey) -> bool:
-        return pubkey.verify_blob((self.file.get_signed_bytes()), self.signature.get_bytes())
+        signature = self.signature.get_bytes()
+        if pubkey.verify_blob(self.file.get_signed_bytes(), signature):
+            return True
+        # Remember a signature over the body as stored, so that get_signed_bytes (and thus
+        # resigning) uses it from now on
+        if getattr(self.file, 'can_sign_stored_body', False) and not self.file.signs_stored_body:
+            if pubkey.verify_blob(self.file.get_stored_signed_bytes(), signature):
+                self.file.signs_stored_body = True
+                return True
+        return False
 
     # resigns this file only
     def resign_only(self, privkey: PrivateKey):
@@ -375,6 +399,9 @@ class CertificateTree:
             key_store_file.signed_entity = signed_entity
 
         for key_store_key in key_store_file.key_store.keys:
+            if key_store_key.is_lms:
+                # LMS signatures are not supported
+                continue
             pubkey = PublicKeyEntity._from_key_store_key(key_store_key, self.psptool)
             try:
                 self.add_pubkey_entity(pubkey)
@@ -396,12 +423,15 @@ class CertificateTree:
                     if type(file) == KeyStoreFile:
                         ct.add_key_store_file(file)
 
-        # Add unlisted/inline keys as found by additional blob parsing efforts
-        ids_to_find = ct.ids
+        # Add unlisted/inline keys as found by additional blob parsing efforts, again for
+        # the ids the found keys bring in, as inline keys can certify each other
+        searched_ids = set()
+        ids_to_find = set(ct.ids)
         while ids_to_find:
+            searched_ids |= ids_to_find
             for pubkey in blob.find_inline_pubkey_entries(ids_to_find):
                 ct.add_pubkey_file(pubkey)
-            ids_to_find = ct.ids.difference(ids_to_find)
+            ids_to_find = ct.ids - searched_ids
 
         return ct
 
