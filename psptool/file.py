@@ -41,19 +41,20 @@ class File(NestedBuffer):
         # APOBs do not have location nor size, so can be easily mistaken as duplicated
         # in multi-ROM files. There should be only one APOB per BIOS directory anyways.
         if type(entry) == BiosDirectoryEntry and entry.type == 0x61:
-            file = cls.from_entry(directory, directory.parent_buffer, entry, directory.rom, directory.psptool)
-            if file is not None:
-                return file
-        elif entry.file_offset() in directory.psptool.files_by_offset:
-            existing_file = directory.psptool.files_by_offset[entry.file_offset()]
+            return cls.from_entry(directory, directory.parent_buffer, entry, directory.rom, directory.psptool)
+
+        # Keyed by the address in the blob, as ROMs of one file can hold different files at
+        # the same ROM offset
+        key = directory.rom.get_address() + entry.file_offset()
+        if key in directory.psptool.files_by_offset:
+            existing_file = directory.psptool.files_by_offset[key]
             existing_file.references.append(directory)
             return existing_file
-        else:
-            file = cls.from_entry(directory, directory.parent_buffer, entry, directory.rom, directory.psptool)
-            if file is not None:
-                directory.psptool.files_by_offset[entry.file_offset()] = file
-                return file
-        pass
+
+        file = cls.from_entry(directory, directory.parent_buffer, entry, directory.rom, directory.psptool)
+        if file is not None:
+            directory.psptool.files_by_offset[key] = file
+        return file
 
     ENTRY_ALIGNMENT = 0x10
 
@@ -238,7 +239,9 @@ class File(NestedBuffer):
     # TODO: Find a better way to identify those entries
     NO_HDR_ENTRY_TYPES = [0x4, 0xb, 0x21, 0x40, 0x48, 0x49, 0x4a, 0x70, 0x6, 0x61, 0x60, 0x68, 0x5f,
                           0x1a, 0x22, 0x63, 0x67, 0x66, 0x6d, 0x62, 0x61, 0x7, 0x38, 0x46, 0x54,
-                          0x82, 0x84, 0x8d, 0x69, 0x7c, 0x98 ]
+                          0x82, 0x84, 0x8d, 0x69, 0x7c, 0x98,
+                          0x7d, 0x7e,  # Redfish RDE/BEJ dictionaries in BIOS directories (Zen 6)
+                          0xa8 ]       # 'CMAN' blob (Zen 6)
 
     NO_SIZE_ENTRY_TYPES = [0xb]
     KEY_STORE_TYPES = [0x50, 0x51]
@@ -248,6 +251,8 @@ class File(NestedBuffer):
 
     @classmethod
     def from_entry(cls, parent_directory, parent_buffer, entry, blob, psptool):
+        if entry.file_offset() >= len(parent_directory.rom) and parent_directory.rom.cut_short:
+            return None
         assert entry.file_offset() < len(parent_directory.rom), "File offset overflows ROM bounds!"
         file_args = [parent_directory, parent_buffer, entry.file_offset(), entry, blob, psptool]
 
@@ -257,10 +262,16 @@ class File(NestedBuffer):
         from .microcode_file import MicrocodeFile
 
         try:
-            if entry.type in cls.PUBKEY_ENTRY_TYPES:
+            if entry.type in cls.PUBKEY_ENTRY_TYPES and cls._has_ps1_magic(parent_buffer, entry):
+                # Zen 6 uses some former pubkey types (e.g. 0xad) for $PS1 signed key stores
+                return KeyStoreFile(*file_args)
+            elif entry.type in cls.PUBKEY_ENTRY_TYPES:
                 return PubkeyFile(*file_args)
             elif entry.type in File.KEY_STORE_TYPES:
                 return KeyStoreFile(*file_args)
+            elif cls._is_erased(parent_buffer, entry):
+                # Reserved but empty, like the KVM_IMAGE slot on Threadripper boards
+                return cls(*file_args)
             elif entry.type not in cls.NO_HDR_ENTRY_TYPES + SECONDARY_DIRECTORY_ENTRY_TYPES:
                 return HeaderFile(*file_args)
             elif type(entry) == BiosDirectoryEntry and entry.type == 0x66:
@@ -270,6 +281,26 @@ class File(NestedBuffer):
         except File.ParseError as e:
             psptool.ph.print_warning(f"ParseError from {entry}: \n  {e}")
             return None
+
+    @staticmethod
+    def _is_erased(parent_buffer, entry) -> bool:
+        """Whether the entry's header would be all 0xff, i.e. erased flash"""
+        offset = entry.file_offset()
+        size = min(entry.size, 0x100)
+        if size == 0 or offset + size > parent_buffer.buffer_size:
+            return False
+        return parent_buffer.get_bytes(offset, size) == b'\xff' * size
+
+    @property
+    def is_erased(self) -> bool:
+        return self.buffer_size > 0 and self.get_bytes() == b'\xff' * self.buffer_size
+
+    @staticmethod
+    def _has_ps1_magic(parent_buffer, entry) -> bool:
+        offset = entry.file_offset()
+        if entry.size < 0x100 or offset + 0x14 > parent_buffer.buffer_size:
+            return False
+        return parent_buffer.get_bytes(offset + 0x10, 4) == b'$PS1'
 
     def __init__(self, parent_directory, parent_buffer, offset, entry, blob, psptool):
         self.blob = blob
