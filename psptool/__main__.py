@@ -240,6 +240,10 @@ def main():
         if args.directory_index is not None and args.file_index is not None and args.outfile is not None:
             file = psp.blob.roms[args.rom_index].directories[args.directory_index].files[args.file_index]
 
+            # Learn which bytes each signature covers while the original keys and files are
+            # still in place, so that resigning signs the same ones
+            psp.cert_tree.verify_all()
+
             # Substituting a file is actually optional to allow plain re-signs
             if args.subfile is not None:
                 with open(args.subfile, 'rb') as f:

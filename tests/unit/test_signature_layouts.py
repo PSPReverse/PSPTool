@@ -19,13 +19,20 @@ The signature follows the body as stored, which is all of these layouts:
 Except for bodies signed only in part, with the signature at the end of the file (Zen 1).
 """
 
+import contextlib
 import hashlib
+import io
 import os
 import struct
+import sys
+import tempfile
 import unittest
 import zlib
+from unittest import mock
 
 from cryptography.hazmat.primitives.asymmetric import rsa
+
+from psptool.__main__ import main
 
 from .signed_rom import HEADER_LEN, SIGNATURE_LEN, align, file_of_type, header, parse, rom, root_key, sign
 
@@ -141,6 +148,25 @@ class TestSignatureLayouts(unittest.TestCase):
         self.assertEqual(file.body.get_bytes(), body)
         self.assertVerified(file)
 
+    def test_resign_signs_body_as_stored(self):
+        data, _ = compressed_file(bytes(range(256)) * 64, signed_as_stored=True)
+        with tempfile.TemporaryDirectory() as directory:
+            original = os.path.join(directory, 'original.rom')
+            resigned = os.path.join(directory, 'resigned.rom')
+            with open(original, 'wb') as f:
+                f.write(rom([(0x00, root_key(), None), (0x08, data, None)]))
+            argv = ['psptool', '-R', '-d', '0', '-e', '1', '-o', resigned, original]
+            with mock.patch.object(sys, 'argv', argv), contextlib.redirect_stdout(io.StringIO()), \
+                    contextlib.redirect_stderr(io.StringIO()):
+                main()
+            with open(resigned, 'rb') as f:
+                pt, _ = parse(f.read())
+        file = file_of_type(pt, 0x08)
+        (root,) = file.signed_entity.certifying_keys
+        signature = file.signed_entity.signature.get_bytes()
+        self.assertTrue(root.get_public_key().verify_blob(file.get_stored_signed_bytes(), signature))
+        self.assertFalse(root.get_public_key().verify_blob(
+            file.header.get_bytes() + file.get_decrypted_decompressed_body(), signature))
 
 
 if __name__ == '__main__':

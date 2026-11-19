@@ -454,6 +454,17 @@ class CertificateTree:
 
         return ct
 
+    def verify_all(self):
+        """Verify each signature once. Whether a compressed or encrypted file is signed as
+        stored or decrypted/decompressed is only known from a signature that verified, and
+        resigning replaces the keys it could verify with."""
+        for signed_entities in self.signed_entities.values():
+            for signed_entity in signed_entities:
+                try:
+                    signed_entity.is_verified()
+                except errors.NoCertifyingKey:
+                    pass
+
     def unique_pubkeys(self, key_id):
         unique_keys = list()
         for key in self.pubkeys[key_id]:
