@@ -110,7 +110,17 @@ class SignedEntity:
         return True
 
     def verify_with_pubkey(self, pubkey: PublicKey) -> bool:
-        signature = self.signature.get_bytes()
+        if self._verify_signature_with_pubkey(pubkey, self.signature):
+            return True
+        signature_at_end = getattr(self.file, 'signature_at_end', None)
+        if signature_at_end is not None and self._verify_signature_with_pubkey(pubkey, signature_at_end):
+            self.file.use_signature_at_end()
+            self.signature = Signature.from_nested_buffer(self.file.signature)
+            return True
+        return False
+
+    def _verify_signature_with_pubkey(self, pubkey: PublicKey, signature: NestedBuffer) -> bool:
+        signature = signature.get_bytes()
         if pubkey.verify_blob(self.file.get_signed_bytes(), signature):
             return True
         # Remember a signature over the body as stored, so that get_signed_bytes (and thus
@@ -432,6 +442,15 @@ class CertificateTree:
             for pubkey in blob.find_inline_pubkey_entries(ids_to_find):
                 ct.add_pubkey_file(pubkey)
             ids_to_find = ct.ids - searched_ids
+
+        # Settle where the signature of files with two candidates is, as that also decides
+        # their body for listing and extraction
+        for file in blob.unique_files():
+            if getattr(file, 'signature_at_end', None) is not None and file.signed_entity is not None:
+                try:
+                    file.signed_entity.is_verified()
+                except errors.NoCertifyingKey:
+                    pass
 
         return ct
 

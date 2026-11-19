@@ -15,6 +15,8 @@ The signature follows the body as stored, which is all of these layouts:
 - Padding up to a larger entry after the signature (Zen 5 boot loader).
 - A header size that leaves out the signature (Zen 6).
 - Signature type 0 next to a 0x200 byte signature (Zen 2 PMU firmware).
+
+Except for bodies signed only in part, with the signature at the end of the file (Zen 1).
 """
 
 import hashlib
@@ -126,6 +128,19 @@ class TestSignatureLayouts(unittest.TestCase):
         self.assertEqual(file.signature.len, 0x200)
         self.assertVerified(file)
         self.assertFalse(file.signs_stored_body)
+
+    def test_signature_at_end_after_partly_signed_body(self):
+        # Zen 1 PSP_FW_TRUSTED_OS: size_signed covers the start of the body only
+        body = os.urandom(0x1000)
+        hdr = bytes(header(0x400, rom_size=HEADER_LEN + len(body) + SIGNATURE_LEN))
+        data = hdr + body + sign(hdr + body[:0x400])
+        pt, _ = parse(rom([(0x00, root_key(), None), (0x02, data, None)]))
+        file = file_of_type(pt, 0x02)
+        # Settled while parsing, as it decides the body that is listed and extracted
+        self.assertEqual(file.signature.buffer_offset, len(data) - SIGNATURE_LEN)
+        self.assertEqual(file.body.get_bytes(), body)
+        self.assertVerified(file)
+
 
 
 if __name__ == '__main__':

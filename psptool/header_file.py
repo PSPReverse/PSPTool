@@ -189,12 +189,20 @@ class HeaderFile(File):
 
         # TODO: Take care of headers with only 0xfff...
 
-        signature_type = SignatureType.from_header(signed, signature_type)
-        signature_offset = None
+        header_signature_type = SignatureType.from_header(signed, signature_type)
+        signature_type, signature_offset = header_signature_type, None
         if signature_type.is_signed:
             signature_type, signature_offset = self._find_signature(signature_type, entry_size, size_from_header)
         self.signature = Signature(self, signature_type, signature_offset)
         self.signature_follows_body = signature_offset is not None
+
+        # Zen 1 also signs only the start of some bodies (size_signed) and keeps the signature
+        # at the end of the file (PSP_FW_TRUSTED_OS). Nothing tells this from data after the
+        # signature, so the CertificateTree switches to it if it verifies, see
+        # use_signature_at_end
+        self.signature_at_end = None
+        if self.signature_follows_body and signature_offset + signature_type.len < self.rom_size:
+            self.signature_at_end = Signature(self, header_signature_type)
 
         self._parse_hdr()
 
@@ -251,12 +259,25 @@ class HeaderFile(File):
 
         assert 0 < self.rom_size <= self.buffer_size
         self.buffer_size = self.rom_size
+        self._set_body()
+        self.is_legacy = False
+
+    def _set_body(self):
         if self.is_signed and self.signature_follows_body:
             body_size = self.signature.buffer_offset - len(self.header)
         else:
             body_size = len(self) - len(self.header) - self.signature.len
         self.body = NestedBuffer(self, body_size, len(self.header))
-        self.is_legacy = False
+
+    def use_signature_at_end(self):
+        """Take the signature at the end of the file instead of the one after the body, once
+        it verified there. The body then extends up to it."""
+        self.signature = self.signature_at_end
+        self.signature_at_end = None
+        self.signature_follows_body = False
+        self.module_index = None
+        self._checksum_view = None
+        self._set_body()
 
     def get_checksummed_bytes(self):
         return self.get_decrypted_decompressed_body()
