@@ -241,6 +241,7 @@ class File(NestedBuffer):
                           0x1a, 0x22, 0x63, 0x67, 0x66, 0x6d, 0x62, 0x61, 0x7, 0x38, 0x46, 0x54,
                           0x82, 0x84, 0x8d, 0x69, 0x7c, 0x98,
                           0x7d, 0x7e,  # Redfish RDE/BEJ dictionaries in BIOS directories (Zen 6)
+                          0x7f,        # 0xb0 byte blob in BIOS directories (Zen 6)
                           0xa8 ]       # 'CMAN' blob (Zen 6)
 
     NO_SIZE_ENTRY_TYPES = [0xb]
