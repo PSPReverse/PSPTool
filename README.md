@@ -7,6 +7,8 @@ It is based on reverse-engineering efforts of AMD's **proprietary filesystem** u
 PSPTool favourably works with UEFI images as obtained through BIOS updates. If these updates are only available through Windows executables, tools like [innoextract](https://github.com/dscharrer/innoextract) can help.
 
 PSPTool was developed at TU Berlin in context of the following research:
+- 2026, paper: [Hello Again: Exploiting Replay Protected Monotonic Counters to Brute-Force Windows Hello PINs](https://arxiv.org/abs/2611.18126)
+- 2025, paper: [Three Glitches to Rule One Car: Fault Injection Attacks on a Connected EV](https://dl.acm.org/doi/pdf/10.1145/3708821.3710820)
 - 2023, talk: [Jailbreaking an Electric Vehicle in 2023 or What It Means to Hotwire Tesla's x86-Based Seat Heater](https://www.blackhat.com/us-23/briefings/schedule/#jailbreaking-an-electric-vehicle-in--or-what-it-means-to-hotwire-teslas-x-based-seat-heater-33049)
 - 2023, paper: [faulTPM: Exposing AMD fTPMs' Deepest Secrets](https://arxiv.org/abs/2304.14717)
 - 2021, paper: [One Glitch to Rule Them All: Fault Injection Attacks Against AMD's Secure Encrypted Virtualization](https://arxiv.org/abs/2108.04575)
