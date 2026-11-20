@@ -16,6 +16,7 @@
 
 from .crypto import KeyId, ReversedSignature
 from .file import File
+from .lms import LmsPublicKey
 from .utils import NestedBuffer, chunker
 from base64 import b64encode
 
@@ -28,6 +29,15 @@ class PubkeyFile(File):
 
     HEADER_LEN = 0x40
     KNOWN_VERSIONS = {1, 2}
+
+    # Zen 6: the AMD root key entry is followed by LMS root key records, each
+    # a 0x38 byte header (version, key ID, ..., u16 record size at 0x34)
+    # followed by an LMS public key.
+    LMS_RECORD_HEADER_LEN = 0x38
+    LMS_RECORD_SIZE = 0x70
+
+    # Bytes after the crypto material that hold LMS key records, not a signature
+    _lms_records_size = 0
 
     def get_der_encoded(self):
         if self.pubexp != 65537:
@@ -84,11 +94,32 @@ class PubkeyFile(File):
         self.has_sha256_checksum = False
         self.has_sha384_checksum = False
 
+        self.lms_keys = []
+        self._parse_lms_records()
+
         # signature
         if self.is_signed:
             assert self.signature_size in {0x100, 0x200}
             signature_start = self.HEADER_LEN + self.pubexp_size + self.modulus_size
             self.signature = ReversedSignature(self, self.signature_size, signature_start)
+
+    def _parse_lms_records(self):
+        trailer_start = self.HEADER_LEN + self.pubexp_size + self.modulus_size
+        trailer_size = self.buffer_size - trailer_start
+        if trailer_size in {0, 0x100, 0x200} or trailer_size % self.LMS_RECORD_SIZE:
+            return
+
+        records = []
+        for offset in range(trailer_start, self.buffer_size, self.LMS_RECORD_SIZE):
+            record = self.get_bytes(offset, self.LMS_RECORD_SIZE)
+            record_size = int.from_bytes(record[0x34:0x36], 'little')
+            key_bytes = record[self.LMS_RECORD_HEADER_LEN:]
+            if record_size != self.LMS_RECORD_SIZE or not LmsPublicKey.looks_like(key_bytes):
+                return
+            records.append((KeyId(self, 0x10, offset + 0x4), LmsPublicKey(key_bytes)))
+
+        self.lms_keys = records
+        self._lms_records_size = trailer_size
 
     @property
     def version(self) -> int:
@@ -118,7 +149,7 @@ class PubkeyFile(File):
 
     @property
     def signature_size(self) -> int:
-        return self.buffer_size - self.HEADER_LEN - self.pubexp_size - self.modulus_size
+        return self.buffer_size - self.HEADER_LEN - self.pubexp_size - self.modulus_size - self._lms_records_size
 
     @property
     def is_signed(self) -> bool:
@@ -141,7 +172,10 @@ class PubkeyFile(File):
 
     def get_readable_signed_by(self):
         if self.is_signed:
-            return self.certifying_id.magic
+            # The signed entity resolves an unnamed certifying key to the root key
+            signed_entity = getattr(self, 'signed_entity', None)
+            certifying_id = signed_entity.certifying_id if signed_entity else self.certifying_id
+            return certifying_id.magic
 
     def get_readable_magic(self):
         return self.key_id.magic
@@ -172,7 +206,29 @@ class PubkeyFile(File):
 
 
 class InlinePubkeyFile(PubkeyFile):
+    """A public key embedded in another file rather than listed in a directory"""
+
+    # Not a directory entry type
+    INLINE_TYPE = 0xdead
+
     def __init__(self, parent_file: NestedBuffer, offset: int, size: int, blob, psptool):
-        # InlinePubkeys don't have a parent directory, so we take None
-        super().__init__(None, parent_file, offset, None, size, blob, psptool)
+        # Set what File.__init__ would, which needs a directory entry
+        self.blob = blob
+        self.psptool = psptool
+        self.entry = None
+        self.type = self.INLINE_TYPE
+        self.compressed = False
+        self.encrypted = False
+        self.is_legacy = False
+        self.size_uncompressed = 0
+        self.references = []
+        self.parent_directory = None
         self.parent_file = parent_file
+        try:
+            NestedBuffer.__init__(self, parent_file, size, buffer_offset=offset)
+        except AssertionError as e:
+            raise File.ParseError(e)
+        self._parse()
+
+    def get_readable_type(self):
+        return f'INLINE_PUBLIC_KEY(in {self.parent_file.get_readable_type()})'

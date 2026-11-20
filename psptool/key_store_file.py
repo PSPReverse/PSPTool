@@ -17,6 +17,7 @@
 from .crypto import Signature, KeyId
 from .file import File
 from .header_file import HeaderFile
+from .lms import LmsPublicKey
 from .utils import NestedBuffer
 
 
@@ -48,6 +49,8 @@ class KeyStoreFile(HeaderFile):
         #self.signature = ReversedSignature(self, signature_size, signature_start)
 
     def get_signed_bytes(self):
+        if self.signs_stored_body:
+            return self.get_stored_signed_bytes()
         return self.header.get_bytes() + self.key_store.get_bytes()
 
     def get_readable_version(self):
@@ -191,6 +194,10 @@ class KeyStoreKey(NestedBuffer):
 
     HEADER_SIZE = 0x50
 
+    # u32 at header offset 0x24
+    KEY_TYPE_RSA = 0
+    KEY_TYPE_LMS = 3  # Zen 6: key_size at 0x20 is in bytes, not bits
+
     def __init__(self, body: NestedBuffer, offset: int):
 
         # Will be set by the CertificateTree created after the blob
@@ -220,11 +227,21 @@ class KeyStoreKey(NestedBuffer):
         assert self.unknown_id < 0x100
 
         self._rsa_exponent = NestedBuffer(self.header, 0x4, buffer_offset=0xc)
-        assert self.rsa_exponent == 0x10001
 
         self.key_id = KeyId(self.header, 0x10, buffer_offset=0x10)
 
         self._key_size = NestedBuffer(self.header, 0x4, buffer_offset=0x20)
+
+        self.key_type = int.from_bytes(self.header.get_bytes(0x24, 0x4), 'little')
+        self.lms_key = None
+        if self.key_type == self.KEY_TYPE_LMS:
+            assert self.rsa_exponent == 0
+            assert self.key_size <= self.crypto_material.buffer_size
+            self.lms_key = LmsPublicKey(self.crypto_material.get_bytes(0, self.key_size))
+            assert self.header.get_bytes(0x28, 0x28) in [b'\0' * 0x27 + b'\0', b'\0' * 0x27 + b'\1']
+            return
+
+        assert self.rsa_exponent == 0x10001
         assert self.key_size == self.crypto_material.buffer_size << 3
 
         # todo: version maybe?
@@ -234,6 +251,10 @@ class KeyStoreKey(NestedBuffer):
             b'\0' * 0x2b + b'\2',
 
         ]
+
+    @property
+    def is_lms(self) -> bool:
+        return self.lms_key is not None
 
     @property
     def size(self) -> int:
